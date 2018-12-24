@@ -1,67 +1,79 @@
 package service
 
 import (
-	"github.com/giantswarm/project-lotus/carbon/status"
-	"log"
 	"time"
-	"github.com/pkg/errors"
-	"fmt"
-)
 
-const (
-	fetchIntervalSec = 30
-	fetchInterval = time.Second * fetchIntervalSec
+	"github.com/pkg/errors"
+
+	"github.com/exmonitor/firefly/database"
+	"github.com/exmonitor/firefly/database/spec/status"
+	"github.com/exmonitor/firefly/log"
+	"github.com/exmonitor/firefly/notification"
 )
 
 type Config struct {
-	DBClient CarbonDatabase
+	DBClient      database.ClientInterface
+	FetchInterval time.Duration
+
+	TimeProfiling bool
+	Logger        *log.Logger
 }
 
 type Service struct {
-	dbClient CarbonDatabase
+	dbClient      database.ClientInterface
+	fetchInterval time.Duration
 
+	timeProfiling bool
+
+	logger *log.Logger
 	// internals
-	failedChecksDb map[int]status.FailedCheck // int is holder for check ID
-	lastFetchTime  time.Time
-}
-
-type CarbonDatabase interface {
-	GetCheckResults(from time.Time, to time.Time) ([]*status.Status, error)
+	failedServiceDB map[int]status.FailedService // int is holder for check ID
+	lastFetchTime   time.Time
 }
 
 // Create new Service
 func New(conf Config) (*Service, error) {
 	if conf.DBClient == nil {
-		return nil, invalidConfigError
+		return nil, errors.Wrapf(invalidConfigError, "conf.DBClient must not be nil")
+	}
+	if conf.Logger == nil {
+		return nil, errors.Wrapf(invalidConfigError, "conf.Logger must not be nil")
+	}
+	if conf.FetchInterval == 0 {
+		return nil, errors.Wrapf(invalidConfigError, "conf.FetchInterval must not be zero")
 	}
 
 	newService := &Service{
-		dbClient:       conf.DBClient,
-		failedChecksDb: map[int]status.FailedCheck{},
-		lastFetchTime:  time.Now().Add(-fetchInterval),
+		dbClient:      conf.DBClient,
+		logger:        conf.Logger,
+		fetchInterval: conf.FetchInterval,
+
+		failedServiceDB: map[int]status.FailedService{},
+		lastFetchTime:   time.Now().Add(-conf.FetchInterval),
 	}
 
 	return newService, nil
 }
 
-// make sure that the Loop is executed only once every x seconds defined in fecthIntervalSec
-func (s *Service) RunLoop() {
+// make sure that the Loop is executed only once every x seconds defined in fecthInterval
+func (s *Service) Boot() {
 
 	// run tick goroutine
 	tickChan := make(chan bool)
-	go intervalTick(fetchIntervalSec, tickChan)
+	s.logger.LogDebug("booting loop for interval %ds", int(s.fetchInterval.Seconds()))
+	go intervalTick(int(s.fetchInterval.Seconds()), tickChan)
 
 	// run infinite loop
 	for {
 		// wait until we reached another interval tick
 		select {
 		case <-tickChan:
-			s.Log("received tick")
+			s.logger.Log("received tick, interval %ds", int(s.fetchInterval.Seconds()))
 		}
 		err := s.mainLoop()
 
 		if err != nil {
-			s.LogError("mainLoop failed", err)
+			s.logger.LogError(err, "mainLoop failed")
 		}
 	}
 
@@ -71,92 +83,130 @@ func (s *Service) mainLoop() error {
 	from := s.lastFetchTime
 	to := time.Now()
 
-	currentFailedChecks, err := s.dbClient.GetCheckResults(from, to)
+	currentFailedServices, err := s.dbClient.ES_GetServiceStateResults(from, to, int(s.fetchInterval.Seconds()))
 	if err != nil {
-		return errors.Wrap(err, "failed to get currentFailedChecks from db")
+		return errors.Wrap(err, "failed to get currentFailedServices from DB")
 	}
+	s.logger.LogDebug("fetched %d failedServices for interval %ds", len(currentFailedServices), int(s.fetchInterval.Seconds()))
 
 	// increase failCounter for existing ids or add id to the database
-	for _, c := range currentFailedChecks {
+	for _, c := range currentFailedServices {
 		// check if this id is already present in the list
-		if failedCheck, ok := s.failedChecksDb[c.Id]; ok {
+		if failedService, ok := s.failedServiceDB[c.Id]; ok {
 			// id is present increase failCheckDB, increase fail counter
-			failedCheck.FailCounter +=1
-			if failedCheck.FailCounter >= failedCheck.FailThreshold {
+			failedService.FailCounter += 1
+			if failedService.FailCounter >= failedService.FailThreshold {
 				// never count fails over threshold
-				failedCheck.FailCounter = failedCheck.FailThreshold
+				failedService.FailCounter = failedService.FailThreshold
 				// check if we reached threshold and possible send notification
-				s.maybeSendFailNotification(failedCheck)
+				s.maybeSendFailNotification(failedService)
+
+				// if counter is over threshold we dont save as we dont need to increase the counter anymore
+			} else {
+				// safe back to localDB
+				s.failedServiceDB[c.Id] = failedService
+				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d", failedService.Id, failedService.FailCounter)
 			}
-
-
 		} else {
-			s.failedChecksDb[c.Id] = status.FailedCheck{
-				Id:c.Id,
-				FailCounter:1,
-				FailThreshold:c.FailThreshold,
-				LastFailedMsg:c.Message,
+			s.failedServiceDB[c.Id] = status.FailedService{
+				Id:            c.Id,
+				FailCounter:   1,
+				FailThreshold: c.FailThreshold,
+				LastFailedMsg: c.Message,
+				ResentEvery:   c.ResentEvery,
 			}
+			s.logger.LogDebug("adding new failedService with ID:%d to localDB", c.Id)
 		}
 	}
 
-	// TODO, we dont instantly remove from failedDB if we got sucessfull check but rather decrease counter,
+	// TODO, we dont instantly remove from failedDB if we got successful check but rather decrease counter,
 	// TODO this can help avoid  hiding flapping alarms
 	// reduce counter for missing checks
-	for id, failedCheck := range s.failedChecksDb {
-		if !status.StatusExists(currentFailedChecks, id) {
-			failedCheck.FailCounter -= 1
+	for id, failedService := range s.failedServiceDB {
+		if !status.StatusExists(currentFailedServices, id) {
+			failedService.FailCounter -= 1
 			// if failed counter drops to zero, than remove it from the failedCheckDb and send OK notification
-			if failedCheck.FailCounter <= 0 {
-				delete(s.failedChecksDb, id)
+			if failedService.FailCounter <= 0 {
+				// remove check from db
+				delete(s.failedServiceDB, id)
+				// send OK notification
+				s.sendOKNotification(failedService)
+			} else {
+				s.failedServiceDB[id] = failedService
+				s.logger.LogDebug("decreasing fail counter for failedService ID:%d to %d", id, failedService.FailCounter)
 			}
 		}
 	}
-
-
 
 	return nil
 }
+
 // check if we need to send fail notification and do it
-func (s *Service) maybeSendFailNotification(f status.FailedCheck) {
+func (s *Service) maybeSendFailNotification(f status.FailedService) {
 	// check if we already sent notification or not
 	if !f.SentNotification {
 		// we did not sent notification yet
 		s.sendFailNotification(f)
 	} else {
-		// we sent notification already
+		// we sent notification Logalready
 		// check if we should resent notification
 		if f.SentNotificationTime.Add(f.ResentEvery).Before(time.Now()) {
 			s.sendFailNotification(f)
 		}
 	}
 }
+
 // send FAIL notification
-func (s *Service) sendFailNotification(f status.FailedCheck)  {
+func (s *Service) sendFailNotification(f status.FailedService) {
 	// log
 	if !f.SentNotification {
-		s.Log(fmt.Sprintf("sending FAIL notification for check %d",f.Id))
+		s.logger.LogDebug("sending FAIL notification for service ID %d", f.Id)
 	} else {
-		s.Log(fmt.Sprintf("sending FAIL notification for check %d after %s",f.Id, f.ResentEvery))
+		s.logger.LogDebug("resending FAIL notification for service ID %d after %s", f.Id, f.ResentEvery)
 	}
 	// set variables first
 	f.SentNotification = true
 	f.SentNotificationTime = time.Now()
+	// save changes to map
+	s.failedServiceDB[f.Id] = f
 
-	// TODO
+	// init notification settings
+	notificationConfig := notification.Config{
+		DBClient:  s.dbClient,
+		ServiceID: f.Id,
+		Failed:    true,
+		Logger:    s.logger,
+	}
+	n, err := notification.New(notificationConfig)
+	if err != nil {
+		s.logger.LogError(err, "failed to create notification settings for service ID %d", f.Id)
+	}
+	// send notification in separate goroutine to avoid I/O block
+	go n.Run()
 }
 
 // send OK notification
-func (s *Service) sendOKNotification(f status.FailedCheck) {
+func (s *Service) sendOKNotification(f status.FailedService) {
 	// log
-	s.Log(fmt.Sprintf("sending OK notification for check %d",f.Id))
+	s.logger.LogDebug("sending OK notification for check %d", f.Id)
 
-	// TODO
+	// init notification settings
+	notificationConfig := notification.Config{
+		DBClient:  s.dbClient,
+		ServiceID: f.Id,
+		Failed:    false,
+		Logger:    s.logger,
+	}
+	n, err := notification.New(notificationConfig)
+	if err != nil {
+		s.logger.LogError(err, "failed to create notification settings for service ID %d", f.Id)
+	}
+	// send notification in separate goroutine to avoid I/O block
+	go n.Run()
 }
 
-
-// returns true if its time to run the interval
-func intervalTick(intervalSec int, tickChan chan bool) bool {
+// send true to tickChan every intervalSec
+func intervalTick(intervalSec int, tickChan chan bool) {
 	for {
 		// extract amount of second and minutes from the now time
 		_, min, sec := time.Now().Clock()
@@ -169,14 +219,7 @@ func intervalTick(intervalSec int, tickChan chan bool) bool {
 			tickChan <- true
 			time.Sleep(time.Second)
 		}
-		//  this is rough value, so we are testing 10 times per sec to not have big offset
+		// this is rough value, so we are testing 10 times per sec to not have big offset
 		time.Sleep(time.Millisecond * 100)
 	}
-}
-
-func (s *Service) Log(msg string) {
-	log.Printf("INFO|%s", msg)
-}
-func (s *Service) LogError(msg string, err error) {
-	log.Printf("ERROR|%s|%s", msg, err)
 }
