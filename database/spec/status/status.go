@@ -7,6 +7,7 @@ type Status struct {
 	ReqId         string
 	Result        bool
 	FailThreshold int
+	ResentEvery   time.Duration
 	Duration      time.Duration
 	Message       string
 }
