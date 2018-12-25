@@ -10,7 +10,7 @@ import (
 
 type ClientInterface interface {
 	// elastic queries
-	ES_GetServiceStateResults(from time.Time, to time.Time, interval int) ([]*status.Status, error)
+	ES_GetFailedServices(from time.Time, to time.Time, interval int) ([]*status.FailedStatus, error)
 
 	// maria queries
 	SQL_GetServiceDetails(checkID int) (*service.Service, error)

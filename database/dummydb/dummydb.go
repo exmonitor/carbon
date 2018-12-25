@@ -7,6 +7,7 @@ import (
 	"github.com/exmonitor/firefly/database/spec/notification"
 	"github.com/exmonitor/firefly/database/spec/service"
 	"github.com/exmonitor/firefly/database/spec/status"
+	"fmt"
 )
 
 type Config struct {
@@ -26,60 +27,96 @@ func GetClient(config Config) *Client {
 	return &Client{}
 }
 
+var dummyDBStatusCounter = 0
+var dummyDBStatusIncreaser = 1
+
 // **************************************************
 // ELASTIC SEARCH
 ///--------------------------------------------------
-func (c *Client) ES_GetServiceStateResults(from time.Time, to time.Time, interval int) ([]*status.Status, error) {
+func (c *Client) ES_GetFailedServices(from time.Time, to time.Time, interval int) ([]*status.FailedStatus, error) {
 	// just dummy record return
-	var statusArray []*status.Status
+	var statusArray []*status.FailedStatus
 
-	if interval == 30 {
-		status1 := &status.Status{
-			Id:1,
-			Duration:time.Second,
-			Result:true,
-			Message:"OK",
-			FailThreshold:5,
-			ReqId:"xxxx",
-			ResentEvery: time.Minute*60,
-		}
-		status2 := &status.Status{
-			Id:2,
-			Duration:time.Second,
-			Result:false,
-			Message:"check tcp: connection time out",
-			FailThreshold:5,
-			ReqId:"xxxxsssss",
-			ResentEvery: time.Minute*10,
-		}
+	fmt.Printf("DummyDB| ES_GetFailedServices | statusCounter %d, statusIncreaser %d\n", dummyDBStatusCounter, dummyDBStatusIncreaser)
 
-		statusArray = append(statusArray, status1)
-		statusArray = append(statusArray, status2)
-	} else if interval == 60 {
-		status3 := &status.Status{
-			Id:3,
-			Duration:time.Second,
-			Result:false,
-			Message:"check tcp: connection refused",
-			FailThreshold:3,
-			ReqId:"xxxxzzzz",
-			ResentEvery: time.Minute*2,
+	// simulate change, we sent 10x  failed and than 10 non-failed for some services
+	if  dummyDBStatusIncreaser > 0 {
+		dummyDBStatusCounter += dummyDBStatusIncreaser
+		if dummyDBStatusCounter > 25 {
+			dummyDBStatusIncreaser = -1
 		}
-		status4 := &status.Status{
-			Id:4,
-			Duration:time.Second,
-			Result:false,
-			Message:"check http: returned 503 status",
-			FailThreshold:5,
-			ReqId:"xxxxyyyy",
-			ResentEvery: time.Minute*2,
-		}
+		if interval == 30 {
 
-		statusArray = append(statusArray, status3)
-		statusArray = append(statusArray, status4)
+			status1 := &status.FailedStatus{
+				Id:            1,
+				Duration:      time.Second,
+				Message:       "OK",
+				FailThreshold: 5,
+				ReqId:         "xxxx",
+				ResentEvery:   time.Minute * 60,
+			}
+			status2 := &status.FailedStatus{
+				Id:            2,
+				Duration:      time.Second,
+				Message:       "check tcp: connection time out",
+				FailThreshold: 5,
+				ReqId:         "xxxxsssss",
+				ResentEvery:   time.Minute * 15,
+			}
+
+			statusArray = append(statusArray, status1)
+			statusArray = append(statusArray, status2)
+		} else if interval == 60 {
+			status3 := &status.FailedStatus{
+				Id:            3,
+				Duration:      time.Second,
+				Message:       "check tcp: connection refused",
+				FailThreshold: 3,
+				ReqId:         "xxxxzzzz",
+				ResentEvery:   time.Minute * 5,
+			}
+			status4 := &status.FailedStatus{
+				Id:            4,
+				Duration:      time.Second,
+				Message:       "check http: returned 503 status",
+				FailThreshold: 5,
+				ReqId:         "xxxxyyyy",
+				ResentEvery:   time.Minute * 5,
+			}
+
+			statusArray = append(statusArray, status3)
+			statusArray = append(statusArray, status4)
+		}
+	} else {
+		dummyDBStatusCounter += dummyDBStatusIncreaser
+		if dummyDBStatusCounter <= 0 {
+			dummyDBStatusIncreaser = 1
+		}
+		if interval == 30 {
+
+			status2 := &status.FailedStatus{
+				Id:            2,
+				Duration:      time.Second,
+				Message:       "check tcp: connection time out",
+				FailThreshold: 5,
+				ReqId:         "xxxxsssss",
+				ResentEvery:   time.Minute * 15,
+			}
+
+			statusArray = append(statusArray, status2)
+		} else if interval == 60 {
+			status3 := &status.FailedStatus{
+				Id:            3,
+				Duration:      time.Second,
+				Message:       "check tcp: connection refused",
+				FailThreshold: 3,
+				ReqId:         "xxxxzzzz",
+				ResentEvery:   time.Minute * 5,
+			}
+
+			statusArray = append(statusArray, status3)
+		}
 	}
-
-
 
 	return statusArray, nil
 }
