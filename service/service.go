@@ -27,7 +27,7 @@ type Service struct {
 
 	logger *log.Logger
 	// internals
-	failedServiceDB map[int]status.FailedService // int is holder for check ID
+	failedServiceDB map[int]FailedService // int is holder for check ID
 	lastFetchTime   time.Time
 }
 
@@ -48,7 +48,7 @@ func New(conf Config) (*Service, error) {
 		logger:        conf.Logger,
 		fetchInterval: conf.FetchInterval,
 
-		failedServiceDB: map[int]status.FailedService{},
+		failedServiceDB: map[int]FailedService{},
 		lastFetchTime:   time.Now().Add(-conf.FetchInterval),
 	}
 
@@ -108,7 +108,7 @@ func (s *Service) mainLoop() error {
 				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d", failedService.Id, failedService.FailCounter)
 			}
 		} else {
-			s.failedServiceDB[c.Id] = status.FailedService{
+			s.failedServiceDB[c.Id] = FailedService{
 				Id:            c.Id,
 				FailCounter:   1,
 				FailThreshold: c.FailThreshold,
@@ -142,7 +142,7 @@ func (s *Service) mainLoop() error {
 }
 
 // check if we need to send fail notification and do it
-func (s *Service) maybeSendFailNotification(f status.FailedService) {
+func (s *Service) maybeSendFailNotification(f FailedService) {
 	// check if we already sent notification or not
 	if !f.SentNotification {
 		// we did not sent notification yet
@@ -157,7 +157,7 @@ func (s *Service) maybeSendFailNotification(f status.FailedService) {
 }
 
 // send FAIL notification
-func (s *Service) sendFailNotification(f status.FailedService) {
+func (s *Service) sendFailNotification(f FailedService) {
 	// log
 	if !f.SentNotification {
 		s.logger.LogDebug("sending FAIL notification for service ID %d", f.Id)
@@ -186,7 +186,7 @@ func (s *Service) sendFailNotification(f status.FailedService) {
 }
 
 // send OK notification
-func (s *Service) sendOKNotification(f status.FailedService) {
+func (s *Service) sendOKNotification(f FailedService) {
 	// log
 	s.logger.LogDebug("sending OK notification for check %d", f.Id)
 

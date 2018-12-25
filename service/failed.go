@@ -1,4 +1,4 @@
-package status
+package service
 
 import "time"
 
@@ -13,3 +13,4 @@ type FailedService struct {
 
 	ResentEvery time.Duration
 }
+
