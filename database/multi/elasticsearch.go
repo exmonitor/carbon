@@ -9,7 +9,7 @@ import (
 // **************************************************
 // ELASTIC SEARCH
 ///--------------------------------------------------
-func (c *Client) ES_GetServiceStateResults(from time.Time, to time.Time, interval int) ([]*status.Status, error) {
+func (c *Client) ES_GetFailedServices(from time.Time, to time.Time, interval int) ([]*status.FailedStatus, error) {
 	// just dummy record return
 
 	return nil, nil

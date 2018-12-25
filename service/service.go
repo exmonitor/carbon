@@ -83,7 +83,7 @@ func (s *Service) mainLoop() error {
 	from := s.lastFetchTime
 	to := time.Now()
 
-	currentFailedServices, err := s.dbClient.ES_GetServiceStateResults(from, to, int(s.fetchInterval.Seconds()))
+	currentFailedServices, err := s.dbClient.ES_GetFailedServices(from, to, int(s.fetchInterval.Seconds()))
 	if err != nil {
 		return errors.Wrap(err, "failed to get currentFailedServices from DB")
 	}
@@ -123,7 +123,7 @@ func (s *Service) mainLoop() error {
 	// TODO this can help avoid  hiding flapping alarms
 	// reduce counter for missing checks
 	for id, failedService := range s.failedServiceDB {
-		if !status.StatusExists(currentFailedServices, id) {
+		if !status.Exists(currentFailedServices, id) {
 			failedService.FailCounter -= 1
 			// if failed counter drops to zero, than remove it from the failedCheckDb and send OK notification
 			if failedService.FailCounter <= 0 {
