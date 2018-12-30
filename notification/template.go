@@ -1,6 +1,6 @@
 package notification
 
-import "github.com/exmonitor/firefly/database/spec/service"
+import "github.com/exmonitor/exclient/database/spec/service"
 
 func EmailTemplate(failed bool, service *service.Service) string {
 	var s string

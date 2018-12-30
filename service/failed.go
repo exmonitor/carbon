@@ -8,9 +8,5 @@ type FailedService struct {
 	FailThreshold int
 	LastFailedMsg string
 
-	SentNotification     bool
-	SentNotificationTime time.Time
-
-	ResentEvery time.Duration
+	NotificationSentTimestamps map[int]time.Time
 }
-
