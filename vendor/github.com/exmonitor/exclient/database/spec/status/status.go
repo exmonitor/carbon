@@ -5,6 +5,7 @@ import "time"
 type ServiceStatus struct {
 	Id            int           `json:"id"`
 	FailThreshold int           `json:"failThreshold"`
+	Interval      int           `json:"interval"`
 	Duration      time.Duration `json:"duration"`
 	Message       string        `json:"message"`
 	Result        bool          `json:"result"`

@@ -35,7 +35,7 @@
 
 [[constraint]]
   name = "github.com/exmonitor/exclient"
-  branch = "fix-es-search-query"
+  branch = "master"
 
 [prune]
   go-tests = true

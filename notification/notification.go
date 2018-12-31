@@ -80,7 +80,7 @@ func (s *Service) Run() {
 
 	for _, n := range notificationSettings {
 		// check if we should resent notification
-		if !s.canSentNotification(n) {
+		if !s.canSentNotification(n) && s.failed {
 			// notification was already sent and its still to early to resent
 			continue
 		}
@@ -105,20 +105,22 @@ func (s *Service) Run() {
 			if err != nil {
 				s.logger.LogError(err, "failed to call to %s for check id %d", n.Target, s.checkId)
 			}
+		default:
+			s.logger.LogError(unknownContactTypeError, "contact type %s not recognized", n.Type)
 		}
 	}
 }
 
-// functo to determine if notification should be sent
+// func to to determine if notification should be sent
 func (s *Service) canSentNotification(notificationSettings *dbnotification.UserNotificationSettings) bool {
 	if notifTimestamp, ok := s.notificationSentTimestamp[notificationSettings.ID]; ok {
 		// there is already record so this means notification was at sent at least once
 		// let check if its time to resent
-		if notificationSettings.ResentSettings == 1 {
+		if notificationSettings.ResentAfterMin == 1 {
 			// notification settings 0 means dont resent notification ever
 			return false
 		}
-		resentAfter := s.getResentDuration(notificationSettings.ResentSettings)
+		resentAfter := time.Duration(notificationSettings.ResentAfterMin) * time.Minute
 
 		// checking if resent interval passed since last notification
 		if time.Now().After(notifTimestamp.Add(resentAfter)) {
@@ -128,7 +130,7 @@ func (s *Service) canSentNotification(notificationSettings *dbnotification.UserN
 			}
 			s.notificationChangeChannel <- nc
 			// sent notification
-			s.logger.LogDebug("resending notification for serviceID %d, notificationID %d after %.0fm", s.checkId, notificationSettings.ID, resentAfter.Minutes())
+			s.logger.Log("resending notification for serviceID %d, notificationID %d after %.0fm", s.checkId, notificationSettings.ID, resentAfter.Minutes())
 			return true
 		} else {
 			// interval for resending has not elapsed, dont sent notification
@@ -142,38 +144,8 @@ func (s *Service) canSentNotification(notificationSettings *dbnotification.UserN
 		}
 		s.notificationChangeChannel <- nc
 		// sent notification
-		s.logger.LogDebug("send first notification for serviceID %d, notificationID %d", s.checkId, notificationSettings.ID)
+		s.logger.Log("send first notification for serviceID %d, notificationID %d", s.checkId, notificationSettings.ID)
 		return true
 	}
 
-}
-
-func (s *Service) getResentDuration(resentSettings int) time.Duration {
-	var resentAfter time.Duration
-
-	switch resentSettings {
-	case 2:
-		resentAfter = time.Minute * 10
-		break
-	case 3:
-		resentAfter = time.Minute * 20
-		break
-	case 4:
-		resentAfter = time.Minute * 30
-		break
-	case 5:
-		resentAfter = time.Minute * 60
-		break
-	case 6:
-		resentAfter = time.Minute * 120
-		break
-	case 7:
-		resentAfter = time.Minute * 240
-		break
-	default:
-		s.logger.LogError(nil, "unknown resentSettings id %d, using default 240min", resentSettings)
-		resentAfter = time.Minute * 240
-	}
-
-	return resentAfter
 }

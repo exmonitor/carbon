@@ -5,8 +5,8 @@ import (
 
 	"github.com/exmonitor/exclient/database"
 	"github.com/exmonitor/exclient/database/spec/status"
-	"github.com/pkg/errors"
 	"github.com/exmonitor/exlogger"
+	"github.com/pkg/errors"
 
 	"github.com/exmonitor/firefly/notification"
 	"github.com/exmonitor/firefly/service/state"
@@ -72,7 +72,6 @@ func (s *Service) Boot() {
 		// wait until we reached another interval tick
 		select {
 		case <-tickChan:
-			s.logger.Log("received tick, interval %ds", int(s.fetchInterval.Seconds()))
 		}
 		err := s.mainLoop()
 
@@ -109,7 +108,7 @@ func (s *Service) mainLoop() error {
 			} else {
 				// safe back to localDB
 				s.failedServiceDB[c.Id] = failedService
-				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d", failedService.Id, failedService.FailCounter)
+				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d/%d", failedService.Id, failedService.FailCounter, failedService.FailThreshold)
 			}
 		} else {
 			s.failedServiceDB[c.Id] = FailedService{
@@ -141,6 +140,9 @@ func (s *Service) mainLoop() error {
 			}
 		}
 	}
+	// save new fetch time
+	s.lastFetchTime = to
+
 	return nil
 }
 
@@ -148,10 +150,12 @@ func (s *Service) mainLoop() error {
 func (s *Service) sendFailNotification(f FailedService) {
 	// init notification settings
 	notificationConfig := notification.Config{
-		DBClient:  s.dbClient,
-		ServiceID: f.Id,
-		Failed:    true,
-		Logger:    s.logger,
+		DBClient:                   s.dbClient,
+		ServiceID:                  f.Id,
+		NotificationChangeChannel:  s.notificationChan,
+		NotificationSentTimestamps: f.NotificationSentTimestamps,
+		Failed:                     true,
+		Logger:                     s.logger,
 	}
 	n, err := notification.New(notificationConfig)
 	if err != nil {
@@ -167,6 +171,8 @@ func (s *Service) sendOKNotification(f FailedService) {
 	notificationConfig := notification.Config{
 		DBClient:  s.dbClient,
 		ServiceID: f.Id,
+		NotificationChangeChannel:  s.notificationChan,
+		NotificationSentTimestamps: f.NotificationSentTimestamps,
 		Failed:    false,
 		Logger:    s.logger,
 	}

@@ -8,7 +8,7 @@
   revision = "8dad47e096318a02828f2990802a45781946bcf9"
 
 [[projects]]
-  branch = "fix-es-search-query"
+  branch = "master"
   name = "github.com/exmonitor/exclient"
   packages = [
     ".",
@@ -19,7 +19,7 @@
     "database/spec/service",
     "database/spec/status"
   ]
-  revision = "411e3cdeee79ad97d556ddce41b980a15fd6f09d"
+  revision = "cac9b5240c151ec641b95f18fc5a94486d7f6aa7"
 
 [[projects]]
   branch = "master"
@@ -87,6 +87,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "fb9e44f3894f8bf2b3cd1b0ab885c661c74f456cf1327d1e9974e9efb9788b22"
+  inputs-digest = "565c2ccf7b965c415b9a281e386d23b6d39d1543645b23f88801343938993a13"
   solver-name = "gps-cdcl"
   solver-version = 1

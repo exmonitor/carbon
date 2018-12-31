@@ -28,6 +28,7 @@ var Flags struct {
 	DBDriver          string
 	ElasticConnection string
 	MariaConnection   string
+	MariaDatabaseName string
 	MariaUser         string
 	MariaPassword     string
 
@@ -58,8 +59,9 @@ func main() {
 
 	// database
 	rootCmd.PersistentFlags().StringVarP(&flags.DBDriver, "db-driver", "", "dummydb", "Set database driver that wil be used for connection")
-	rootCmd.PersistentFlags().StringVarP(&flags.ElasticConnection, "elastic-connection", "", "", "Set elastic connection string.")
+	rootCmd.PersistentFlags().StringVarP(&flags.ElasticConnection, "elastic-connection", "", "http://127.0.0.1:9200", "Set elastic connection string.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaConnection, "maria-connection", "", "", "Set maria database connection string.")
+	rootCmd.PersistentFlags().StringVarP(&flags.MariaDatabaseName, "maria-database-name", "", "", "Set maria database name.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaUser, "maria-user", "", "", "Set Maria database user that wil be used for connection.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaPassword, "maria-password", "", "", "Set Maria database password that will be used for connection.")
 
@@ -76,8 +78,17 @@ func main() {
 	}
 }
 
+
+func validateFlags() {
+	if flags.TimeProfiling && !flags.Debug {
+		fmt.Printf("WARNING: time profiling is shown via debug log, if you dont enabled debug log you wont see time profiling output.\n")
+	}
+}
+
 // main command execute function
 func mainExecute(cmd *cobra.Command, args []string) {
+	validateFlags()
+
 	logConfig := exlogger.Config{
 		Debug:        flags.Debug,
 		LogToFile:    flags.LogToFile,
@@ -99,8 +110,12 @@ func mainExecute(cmd *cobra.Command, args []string) {
 			DBDriver:          flags.DBDriver,
 			ElasticConnection: flags.ElasticConnection,
 			MariaConnection:   flags.MariaConnection,
-			MariaUser:         flags.MariaConnection,
+			MariaDatabaseName: flags.MariaDatabaseName,
+			MariaUser:         flags.MariaUser,
 			MariaPassword:     flags.MariaPassword,
+
+			Logger:        logger,
+			TimeProfiling: flags.TimeProfiling,
 		}
 		// init db client
 		dbClient, err = exclient.GetDBClient(dbConfig)
@@ -151,7 +166,7 @@ func catchOSSignals(l *exlogger.Logger, dbClient database.ClientInterface) {
 		if flags.LogToFile {
 			l.CloseLogs()
 		}
-		// clsoe db client
+		// close db client
 		dbClient.Close()
 
 		fmt.Printf("\n>> Caught signal %s, exiting ...\n\n", s.String())
