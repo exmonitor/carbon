@@ -1,19 +1,27 @@
 package notification
 
 import (
-	"github.com/exmonitor/firefly/database"
-	"github.com/exmonitor/firefly/log"
+	"time"
+
+	"github.com/exmonitor/exclient/database"
+	dbnotification "github.com/exmonitor/exclient/database/spec/notification"
+	"github.com/exmonitor/exlogger"
+	"github.com/pkg/errors"
+
 	"github.com/exmonitor/firefly/notification/email"
 	"github.com/exmonitor/firefly/notification/phone"
 	"github.com/exmonitor/firefly/notification/sms"
-	"github.com/pkg/errors"
+	"github.com/exmonitor/firefly/service/state"
 )
 
 type Config struct {
-	ServiceID int
-	Failed    bool
-	DBClient  database.ClientInterface
-	Logger    *log.Logger
+	ServiceID                  int
+	Failed                     bool
+	NotificationSentTimestamps map[int]time.Time
+	NotificationChangeChannel  chan state.NotificationChange
+
+	DBClient database.ClientInterface
+	Logger   *exlogger.Logger
 }
 
 const (
@@ -29,38 +37,53 @@ func New(conf Config) (*Service, error) {
 	if conf.DBClient == nil {
 		return nil, errors.Wrap(invalidConfigError, "conf.DBCLient must not be nil")
 	}
+	if conf.Logger == nil {
+		return nil, errors.Wrap(invalidConfigError, "conf.Logger must not be nil")
+	}
 
 	newService := &Service{
-		checkId: conf.ServiceID,
-		failed:  conf.Failed,
+		checkId:                   conf.ServiceID,
+		failed:                    conf.Failed,
+		notificationSentTimestamp: conf.NotificationSentTimestamps,
+		notificationChangeChannel: conf.NotificationChangeChannel,
 
 		dbClient: conf.DBClient,
+		logger:   conf.Logger,
 	}
 
 	return newService, nil
 }
 
 type Service struct {
-	checkId  int
-	failed   bool
+	checkId                   int
+	failed                    bool
+	notificationSentTimestamp map[int]time.Time
+	notificationChangeChannel chan state.NotificationChange
+
 	dbClient database.ClientInterface
-	logger   *log.Logger
+	logger   *exlogger.Logger
 }
 
 // for goroutine
 func (s *Service) Run() {
-	// get monitoring service details
-	serviceInfo, err := s.dbClient.SQL_GetServiceDetails(s.checkId)
-	if err != nil {
-		s.logger.LogError(err, "failed to fetch service info")
-	}
 	// fetch all user notification settings
 	notificationSettings, err := s.dbClient.SQL_GetUsersNotificationSettings(s.checkId)
 	if err != nil {
 		s.logger.LogError(err, "failed to fetch user notification settings")
 	}
 
+	// get monitoring service details
+	serviceInfo, err := s.dbClient.SQL_GetServiceDetails(s.checkId)
+	if err != nil {
+		s.logger.LogError(err, "failed to fetch service info")
+	}
+
 	for _, n := range notificationSettings {
+		// check if we should resent notification
+		if !s.canSentNotification(n) && s.failed {
+			// notification was already sent and its still to early to resent
+			continue
+		}
 		switch n.Type {
 		case contactTypeEmail:
 			msg := EmailTemplate(s.failed, serviceInfo)
@@ -82,7 +105,47 @@ func (s *Service) Run() {
 			if err != nil {
 				s.logger.LogError(err, "failed to call to %s for check id %d", n.Target, s.checkId)
 			}
+		default:
+			s.logger.LogError(unknownContactTypeError, "contact type %s not recognized", n.Type)
 		}
+	}
+}
+
+// func to to determine if notification should be sent
+func (s *Service) canSentNotification(notificationSettings *dbnotification.UserNotificationSettings) bool {
+	if notifTimestamp, ok := s.notificationSentTimestamp[notificationSettings.ID]; ok {
+		// there is already record so this means notification was at sent at least once
+		// let check if its time to resent
+		if notificationSettings.ResentAfterMin == 1 {
+			// notification settings 0 means dont resent notification ever
+			return false
+		}
+		resentAfter := time.Duration(notificationSettings.ResentAfterMin) * time.Minute
+
+		// checking if resent interval passed since last notification
+		if time.Now().After(notifTimestamp.Add(resentAfter)) {
+			nc := state.NotificationChange{
+				ServiceID:      s.checkId,
+				NotificationID: notificationSettings.ID,
+			}
+			s.notificationChangeChannel <- nc
+			// sent notification
+			s.logger.Log("resending notification for serviceID %d, notificationID %d after %.0fm", s.checkId, notificationSettings.ID, resentAfter.Minutes())
+			return true
+		} else {
+			// interval for resending has not elapsed, dont sent notification
+			return false
+		}
+	} else {
+		// there is no record in notificationSentTimeStamp for this notify id, so should sent first notification
+		nc := state.NotificationChange{
+			ServiceID:      s.checkId,
+			NotificationID: notificationSettings.ID,
+		}
+		s.notificationChangeChannel <- nc
+		// sent notification
+		s.logger.Log("send first notification for serviceID %d, notificationID %d", s.checkId, notificationSettings.ID)
+		return true
 	}
 
 }

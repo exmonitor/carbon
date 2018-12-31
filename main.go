@@ -9,8 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/exmonitor/firefly/database"
-	"github.com/exmonitor/firefly/log"
+	"github.com/exmonitor/exclient"
+	"github.com/exmonitor/exclient/database"
+	"github.com/exmonitor/exlogger"
 	"github.com/exmonitor/firefly/service"
 )
 
@@ -27,6 +28,7 @@ var Flags struct {
 	DBDriver          string
 	ElasticConnection string
 	MariaConnection   string
+	MariaDatabaseName string
 	MariaUser         string
 	MariaPassword     string
 
@@ -57,8 +59,9 @@ func main() {
 
 	// database
 	rootCmd.PersistentFlags().StringVarP(&flags.DBDriver, "db-driver", "", "dummydb", "Set database driver that wil be used for connection")
-	rootCmd.PersistentFlags().StringVarP(&flags.ElasticConnection, "elastic-connection", "", "", "Set elastic connection string.")
+	rootCmd.PersistentFlags().StringVarP(&flags.ElasticConnection, "elastic-connection", "", "http://127.0.0.1:9200", "Set elastic connection string.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaConnection, "maria-connection", "", "", "Set maria database connection string.")
+	rootCmd.PersistentFlags().StringVarP(&flags.MariaDatabaseName, "maria-database-name", "", "", "Set maria database name.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaUser, "maria-user", "", "", "Set Maria database user that wil be used for connection.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaPassword, "maria-password", "", "", "Set Maria database password that will be used for connection.")
 
@@ -75,41 +78,56 @@ func main() {
 	}
 }
 
+
+func validateFlags() {
+	if flags.TimeProfiling && !flags.Debug {
+		fmt.Printf("WARNING: time profiling is shown via debug log, if you dont enabled debug log you wont see time profiling output.\n")
+	}
+}
+
 // main command execute function
 func mainExecute(cmd *cobra.Command, args []string) {
-	logConfig := log.Config{
-		Debug:flags.Debug,
+	validateFlags()
+
+	logConfig := exlogger.Config{
+		Debug:        flags.Debug,
 		LogToFile:    flags.LogToFile,
 		LogFile:      flags.LogFile,
 		LogErrorFile: flags.LogErrorFile,
 	}
 
-	logger, err := log.New(logConfig)
+	logger, err := exlogger.New(logConfig)
 	if err != nil {
 		panic(err)
 	}
+	defer logger.CloseLogs()
 
-	// catch Interrupt (Ctrl^C) or SIGTERM and exit
-	// also make sure to close log files before exiting
-	catchOSSignals(logger)
 	// database client connection
 	var dbClient database.ClientInterface
 	{
 		// set db configuration
-		dbConfig := DBConfig{
+		dbConfig := exclient.DBConfig{
 			DBDriver:          flags.DBDriver,
 			ElasticConnection: flags.ElasticConnection,
 			MariaConnection:   flags.MariaConnection,
-			MariaUser:         flags.MariaConnection,
+			MariaDatabaseName: flags.MariaDatabaseName,
+			MariaUser:         flags.MariaUser,
 			MariaPassword:     flags.MariaPassword,
+
+			Logger:        logger,
+			TimeProfiling: flags.TimeProfiling,
 		}
 		// init db client
-		dbClient, err = GetDBClient(dbConfig)
+		dbClient, err = exclient.GetDBClient(dbConfig)
 		if err != nil {
 			fmt.Printf("Failed to prepare DB Client.\n")
 			panic(err)
 		}
 	}
+	defer dbClient.Close()
+	// catch Interrupt (Ctrl^C) or SIGTERM and exit
+	// also make sure to close log files before exiting
+	catchOSSignals(logger, dbClient)
 
 	intervals, err := dbClient.SQL_GetIntervals()
 	if err != nil {
@@ -138,16 +156,19 @@ func mainExecute(cmd *cobra.Command, args []string) {
 }
 
 // catch Interrupt (Ctrl^C) or SIGTERM and exit
-func catchOSSignals(l *log.Logger) {
+func catchOSSignals(l *exlogger.Logger, dbClient database.ClientInterface) {
 	// catch signals
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		// be sure to close log files
 		s := <-c
+		// be sure to close log files
 		if flags.LogToFile {
 			l.CloseLogs()
 		}
+		// close db client
+		dbClient.Close()
+
 		fmt.Printf("\n>> Caught signal %s, exiting ...\n\n", s.String())
 		os.Exit(1)
 	}()

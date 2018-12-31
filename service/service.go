@@ -3,12 +3,13 @@ package service
 import (
 	"time"
 
+	"github.com/exmonitor/exclient/database"
+	"github.com/exmonitor/exclient/database/spec/status"
+	"github.com/exmonitor/exlogger"
 	"github.com/pkg/errors"
 
-	"github.com/exmonitor/firefly/database"
-	"github.com/exmonitor/firefly/database/spec/status"
-	"github.com/exmonitor/firefly/log"
 	"github.com/exmonitor/firefly/notification"
+	"github.com/exmonitor/firefly/service/state"
 )
 
 type Config struct {
@@ -16,7 +17,7 @@ type Config struct {
 	FetchInterval time.Duration
 
 	TimeProfiling bool
-	Logger        *log.Logger
+	Logger        *exlogger.Logger
 }
 
 type Service struct {
@@ -25,10 +26,11 @@ type Service struct {
 
 	timeProfiling bool
 
-	logger *log.Logger
+	logger *exlogger.Logger
 	// internals
-	failedServiceDB map[int]FailedService // int is holder for check ID
-	lastFetchTime   time.Time
+	failedServiceDB  map[int]FailedService // int is holder for check ID
+	lastFetchTime    time.Time
+	notificationChan chan state.NotificationChange
 }
 
 // Create new Service
@@ -48,8 +50,9 @@ func New(conf Config) (*Service, error) {
 		logger:        conf.Logger,
 		fetchInterval: conf.FetchInterval,
 
-		failedServiceDB: map[int]FailedService{},
-		lastFetchTime:   time.Now().Add(-conf.FetchInterval),
+		failedServiceDB:  map[int]FailedService{},
+		lastFetchTime:    time.Now().Add(-conf.FetchInterval),
+		notificationChan: make(chan state.NotificationChange),
 	}
 
 	return newService, nil
@@ -62,13 +65,13 @@ func (s *Service) Boot() {
 	tickChan := make(chan bool)
 	s.logger.LogDebug("booting loop for interval %ds", int(s.fetchInterval.Seconds()))
 	go intervalTick(int(s.fetchInterval.Seconds()), tickChan)
+	go s.notificationSentTimestampOperator()
 
 	// run infinite loop
 	for {
 		// wait until we reached another interval tick
 		select {
 		case <-tickChan:
-			s.logger.Log("received tick, interval %ds", int(s.fetchInterval.Seconds()))
 		}
 		err := s.mainLoop()
 
@@ -99,21 +102,21 @@ func (s *Service) mainLoop() error {
 				// never count fails over threshold
 				failedService.FailCounter = failedService.FailThreshold
 				// check if we reached threshold and possible send notification
-				s.maybeSendFailNotification(failedService)
+				s.sendFailNotification(failedService)
 
 				// if counter is over threshold we dont save as we dont need to increase the counter anymore
 			} else {
 				// safe back to localDB
 				s.failedServiceDB[c.Id] = failedService
-				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d", failedService.Id, failedService.FailCounter)
+				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d/%d", failedService.Id, failedService.FailCounter, failedService.FailThreshold)
 			}
 		} else {
 			s.failedServiceDB[c.Id] = FailedService{
-				Id:            c.Id,
-				FailCounter:   1,
-				FailThreshold: c.FailThreshold,
-				LastFailedMsg: c.Message,
-				ResentEvery:   c.ResentEvery,
+				Id:                         c.Id,
+				FailCounter:                1,
+				FailThreshold:              c.FailThreshold,
+				LastFailedMsg:              c.Message,
+				NotificationSentTimestamps: map[int]time.Time{},
 			}
 			s.logger.LogDebug("adding new failedService with ID:%d to localDB", c.Id)
 		}
@@ -137,45 +140,22 @@ func (s *Service) mainLoop() error {
 			}
 		}
 	}
+	// save new fetch time
+	s.lastFetchTime = to
 
 	return nil
 }
 
-// check if we need to send fail notification and do it
-func (s *Service) maybeSendFailNotification(f FailedService) {
-	// check if we already sent notification or not
-	if !f.SentNotification {
-		// we did not sent notification yet
-		s.sendFailNotification(f)
-	} else {
-		// we sent notification Logalready
-		// check if we should resent notification
-		if f.SentNotificationTime.Add(f.ResentEvery).Before(time.Now()) {
-			s.sendFailNotification(f)
-		}
-	}
-}
-
 // send FAIL notification
 func (s *Service) sendFailNotification(f FailedService) {
-	// log
-	if !f.SentNotification {
-		s.logger.LogDebug("sending FAIL notification for service ID %d", f.Id)
-	} else {
-		s.logger.LogDebug("resending FAIL notification for service ID %d after %s", f.Id, f.ResentEvery)
-	}
-	// set variables first
-	f.SentNotification = true
-	f.SentNotificationTime = time.Now()
-	// save changes to map
-	s.failedServiceDB[f.Id] = f
-
 	// init notification settings
 	notificationConfig := notification.Config{
-		DBClient:  s.dbClient,
-		ServiceID: f.Id,
-		Failed:    true,
-		Logger:    s.logger,
+		DBClient:                   s.dbClient,
+		ServiceID:                  f.Id,
+		NotificationChangeChannel:  s.notificationChan,
+		NotificationSentTimestamps: f.NotificationSentTimestamps,
+		Failed:                     true,
+		Logger:                     s.logger,
 	}
 	n, err := notification.New(notificationConfig)
 	if err != nil {
@@ -187,13 +167,12 @@ func (s *Service) sendFailNotification(f FailedService) {
 
 // send OK notification
 func (s *Service) sendOKNotification(f FailedService) {
-	// log
-	s.logger.LogDebug("sending OK notification for check %d", f.Id)
-
 	// init notification settings
 	notificationConfig := notification.Config{
 		DBClient:  s.dbClient,
 		ServiceID: f.Id,
+		NotificationChangeChannel:  s.notificationChan,
+		NotificationSentTimestamps: f.NotificationSentTimestamps,
 		Failed:    false,
 		Logger:    s.logger,
 	}
@@ -221,5 +200,22 @@ func intervalTick(intervalSec int, tickChan chan bool) {
 		}
 		// this is rough value, so we are testing 10 times per sec to not have big offset
 		time.Sleep(time.Millisecond * 100)
+	}
+}
+
+// this function waits for signals from notifications to update time, when notification was sent
+// it is necessary for keeping proper resent mechanism
+func (s *Service) notificationSentTimestampOperator() {
+	for {
+		notifChange := <-s.notificationChan
+		if failedService, ok := s.failedServiceDB[notifChange.ServiceID]; ok {
+			// save current timestamp into the map
+			failedService.NotificationSentTimestamps[notifChange.NotificationID] = time.Now()
+			// save back to failedServiceDB
+			s.failedServiceDB[notifChange.ServiceID] = failedService
+			s.logger.LogDebug("saved new notificationSentTimestamp for serviceID %d, notificationID %d", notifChange.ServiceID, notifChange.NotificationID)
+		} else {
+			s.logger.LogError(nil, "trying to access non-existing serviceID in failedServiceDB in notificationSentTimestampOperator")
+		}
 	}
 }

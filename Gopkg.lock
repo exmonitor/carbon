@@ -2,10 +2,63 @@
 
 
 [[projects]]
+  branch = "master"
+  name = "github.com/exmonitor/chronos"
+  packages = ["."]
+  revision = "8dad47e096318a02828f2990802a45781946bcf9"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/exmonitor/exclient"
+  packages = [
+    ".",
+    "database",
+    "database/dummydb",
+    "database/multi",
+    "database/spec/notification",
+    "database/spec/service",
+    "database/spec/status"
+  ]
+  revision = "cac9b5240c151ec641b95f18fc5a94486d7f6aa7"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/exmonitor/exlogger"
+  packages = ["."]
+  revision = "82c50944ae03c05c4e6cc70056a4fe005624caef"
+
+[[projects]]
+  name = "github.com/go-sql-driver/mysql"
+  packages = ["."]
+  revision = "72cd26f257d44c1114970e19afddcd812016007e"
+  version = "v1.4.1"
+
+[[projects]]
   name = "github.com/inconshreveable/mousetrap"
   packages = ["."]
   revision = "76626ae9c91c4f2a10f34cad8ce83ea42c93bb75"
   version = "v1.0"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/mailru/easyjson"
+  packages = [
+    ".",
+    "buffer",
+    "jlexer",
+    "jwriter"
+  ]
+  revision = "60711f1a8329503b04e1c88535f419d0bb440bff"
+
+[[projects]]
+  name = "github.com/olivere/elastic"
+  packages = [
+    ".",
+    "config",
+    "uritemplates"
+  ]
+  revision = "1619150b007041b6dba8aa447f0e2d151cc2b4c5"
+  version = "v6.2.14"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -25,9 +78,15 @@
   revision = "298182f68c66c05229eb03ac171abe6e309ee79a"
   version = "v1.0.3"
 
+[[projects]]
+  name = "google.golang.org/appengine"
+  packages = ["cloudsql"]
+  revision = "e9657d882bb81064595ca3b56cbe2546bbabf7b1"
+  version = "v1.4.0"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7bc01b2a8bdba8878750e5d25127a29cd587a00a5b6c72d6f7eb36d2e21f675b"
+  inputs-digest = "565c2ccf7b965c415b9a281e386d23b6d39d1543645b23f88801343938993a13"
   solver-name = "gps-cdcl"
   solver-version = 1
