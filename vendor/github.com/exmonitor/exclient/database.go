@@ -7,6 +7,7 @@ import (
 	"github.com/exmonitor/exclient/database/dummydb"
 	"github.com/exmonitor/exclient/database/multi"
 	"github.com/exmonitor/exlogger"
+	"time"
 )
 
 type DBConfig struct {
@@ -18,6 +19,10 @@ type DBConfig struct {
 	MariaDatabaseName string
 	MariaUser         string
 	MariaPassword     string
+
+	// cache system
+	CacheEnabled bool
+	CacheTTL     time.Duration
 
 	Logger        *exlogger.Logger
 	TimeProfiling bool
@@ -37,6 +42,9 @@ func GetDBClient(conf DBConfig) (database.ClientInterface, error) {
 			MariaDatabaseName: conf.MariaDatabaseName,
 			MariaUser:         conf.MariaUser,
 			MariaPassword:     conf.MariaPassword,
+
+			CacheEnabled: conf.CacheEnabled,
+			CacheTTL:     conf.CacheTTL,
 
 			Logger:        conf.Logger,
 			TimeProfiling: conf.TimeProfiling,

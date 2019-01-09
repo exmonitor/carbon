@@ -23,6 +23,7 @@ import (
 */
 func (c *Client) SQL_GetIntervals() ([]int, error) {
 	t := chronos.New()
+
 	q := "SELECT " +
 		"id_interval, " +
 		"value " +
@@ -69,6 +70,22 @@ func (c *Client) SQL_GetIntervals() ([]int, error) {
 */
 func (c *Client) SQL_GetUsersNotificationSettings(serviceID int) ([]*notification.UserNotificationSettings, error) {
 	t := chronos.New()
+
+	// cache system
+	if c.cacheEnabled {
+		if c.cacheSystem.SQL.GetUsersNotificationSettings.IsCacheValid(serviceID, c.cacheTTL) {
+			// valid cache, lets use it
+			d := c.cacheSystem.SQL.GetUsersNotificationSettings.GetData(serviceID)
+			t.Finish()
+			if c.timeProfiling {
+				c.logger.LogDebug("TIME_PROFILING: cached SQL_GetUsersNotificationSettings:ID:%d in %sms", serviceID, t.StringMilisec())
+			}
+			return d, nil
+		} else {
+			// cache is not valid, lets continue without it
+		}
+	}
+
 	q := "SELECT " +
 		"notification.id_notification, " +
 		"notification.type, " +
@@ -112,6 +129,11 @@ func (c *Client) SQL_GetUsersNotificationSettings(serviceID int) ([]*notificatio
 		notifications = append(notifications, n)
 	}
 
+	if c.cacheEnabled {
+		// save data to cache
+		c.cacheSystem.SQL.GetUsersNotificationSettings.CacheData(serviceID, notifications)
+	}
+
 	t.Finish()
 	if c.timeProfiling {
 		c.logger.LogDebug("TIME_PROFILING: executed SQL_GetUsersNotificationSettings:ID:%d in %sms", serviceID, t.StringMilisec())
@@ -119,8 +141,24 @@ func (c *Client) SQL_GetUsersNotificationSettings(serviceID int) ([]*notificatio
 	return notifications, nil
 }
 
-func (c *Client) SQL_GetServices(interval int) ([]*service.Service, error) {
+func (c *Client) SQL_GetServices(intervalSec int) ([]*service.Service, error) {
 	t := chronos.New()
+
+	// cache system, ignore if ttl is lower than the interval as it will be always expired
+	if c.cacheEnabled && intervalSec > int(c.cacheTTL.Seconds()) {
+		if c.cacheSystem.SQL.GetServices.IsCacheValid(intervalSec, c.cacheTTL) {
+			// valid cache, lets use it
+			d := c.cacheSystem.SQL.GetServices.GetData(intervalSec)
+			t.Finish()
+			if c.timeProfiling {
+				c.logger.LogDebug("TIME_PROFILING: cached SQL_GetServices:%d in %sms", intervalSec, t.StringMilisec())
+			}
+			return d, nil
+		} else {
+			// cache is not valid, lets continue without it
+		}
+	}
+
 	q := "SELECT " +
 		"services.id_services, " +
 		"services.fail_treshold, " +
@@ -143,7 +181,7 @@ func (c *Client) SQL_GetServices(interval int) ([]*service.Service, error) {
 		return nil, errors.Wrap(err, "failed to prepare query SQL_GetServices")
 	}
 	// execute sql query
-	rows, err := query.Query(interval)
+	rows, err := query.Query(intervalSec)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute SQL_GetServices")
 	}
@@ -171,15 +209,37 @@ func (c *Client) SQL_GetServices(interval int) ([]*service.Service, error) {
 		services = append(services, s)
 	}
 
+	// cache system, ignore if ttl is lower than the interval as it will be always expired
+	if c.cacheEnabled && intervalSec > int(c.cacheTTL.Seconds()) {
+		// save data to cache
+		c.cacheSystem.SQL.GetServices.CacheData(intervalSec, services)
+	}
+
 	t.Finish()
 	if c.timeProfiling {
-		c.logger.LogDebug("TIME_PROFILING: executed SQL_GetServices:%d in %sms", interval, t.StringMilisec())
+		c.logger.LogDebug("TIME_PROFILING: executed SQL_GetServices:%d in %sms", intervalSec, t.StringMilisec())
 	}
 	return services, nil
 }
 
 func (c *Client) SQL_GetServiceDetails(serviceID int) (*service.Service, error) {
 	t := chronos.New()
+
+	// cache system
+	if c.cacheEnabled {
+		if c.cacheSystem.SQL.GetServiceDetails.IsCacheValid(serviceID, c.cacheTTL) {
+			// valid cache, lets use it
+			d := c.cacheSystem.SQL.GetServiceDetails.GetData(serviceID)
+			t.Finish()
+			if c.timeProfiling {
+				c.logger.LogDebug("TIME_PROFILING: cached SQL_GetServiceDetails:ID:%d in %sms", serviceID, t.StringMilisec())
+			}
+			return d, nil
+		} else {
+			// cache is not valid, lets continue without it
+		}
+	}
+
 	q := "SELECT " +
 		"services.id_services, " +
 		"services.fail_treshold, " +
@@ -229,6 +289,11 @@ func (c *Client) SQL_GetServiceDetails(serviceID int) (*service.Service, error) 
 		}
 	} else {
 		return nil, errors.Wrapf(executionFailedError, "failed to fetch service ID %d, no results found in db", serviceID)
+	}
+
+	if c.cacheEnabled {
+		// save data to cache
+		c.cacheSystem.SQL.GetServiceDetails.CacheData(serviceID, s)
 	}
 
 	t.Finish()

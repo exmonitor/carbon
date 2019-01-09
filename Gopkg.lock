@@ -15,11 +15,12 @@
     "database",
     "database/dummydb",
     "database/multi",
+    "database/multi/cache",
     "database/spec/notification",
     "database/spec/service",
     "database/spec/status"
   ]
-  revision = "cac9b5240c151ec641b95f18fc5a94486d7f6aa7"
+  revision = "5b3ad941277e1916ea828c7b88d6467e7dde6780"
 
 [[projects]]
   branch = "master"
