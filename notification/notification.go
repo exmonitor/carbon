@@ -12,6 +12,7 @@ import (
 	"github.com/exmonitor/firefly/notification/phone"
 	"github.com/exmonitor/firefly/notification/sms"
 	"github.com/exmonitor/firefly/service/state"
+	"gopkg.in/gomail.v2"
 )
 
 type Config struct {
@@ -19,6 +20,8 @@ type Config struct {
 	Failed                     bool
 	NotificationSentTimestamps map[int]time.Time
 	NotificationChangeChannel  chan state.NotificationChange
+	SMTPEnabled                bool
+	SMTPEmailChan              chan *gomail.Message
 
 	DBClient database.ClientInterface
 	Logger   *exlogger.Logger
@@ -46,6 +49,8 @@ func New(conf Config) (*Service, error) {
 		failed:                    conf.Failed,
 		notificationSentTimestamp: conf.NotificationSentTimestamps,
 		notificationChangeChannel: conf.NotificationChangeChannel,
+		smtpEnabled:               conf.SMTPEnabled,
+		smtpEmailChan:             conf.SMTPEmailChan,
 
 		dbClient: conf.DBClient,
 		logger:   conf.Logger,
@@ -59,6 +64,8 @@ type Service struct {
 	failed                    bool
 	notificationSentTimestamp map[int]time.Time
 	notificationChangeChannel chan state.NotificationChange
+	smtpEnabled               bool
+	smtpEmailChan             chan *gomail.Message
 
 	dbClient database.ClientInterface
 	logger   *exlogger.Logger
@@ -86,11 +93,21 @@ func (s *Service) Run() {
 		}
 		switch n.Type {
 		case contactTypeEmail:
-			msg := EmailTemplate(s.failed, serviceInfo)
-			err := email.Send(n.Target, msg)
-			if err != nil {
-				s.logger.LogError(err, "failed to send Email to %s for check id %d", n.Target, s.checkId)
+			// prepare email config
+			emailConfig := email.EmailConfig{
+				Failed:      s.failed,
+				To:          n.Target,
+				ServiceInfo: serviceInfo,
+				SMTPEnabled: s.smtpEnabled,
+				EmailChan:   s.smtpEmailChan,
 			}
+
+			emailSender, err := email.NewEmail(emailConfig)
+			if err != nil {
+				s.logger.LogError(err, "failed to prepare Email to %s for check id %d", n.Target, s.checkId)
+			}
+			// send email
+			emailSender.Send()
 			break
 		case contactTypeSms:
 			msg := SMSTemplate(s.failed, serviceInfo)
