@@ -12,6 +12,8 @@ import (
 
 	"context"
 	"github.com/exmonitor/exclient/database"
+	"github.com/exmonitor/exclient/database/multi/cache"
+	"time"
 )
 
 const (
@@ -36,6 +38,10 @@ type Config struct {
 	MariaPassword     string
 	MariaDatabaseName string
 
+	// cache system
+	CacheEnabled bool
+	CacheTTL     time.Duration
+
 	Logger        *exlogger.Logger
 	TimeProfiling bool
 }
@@ -43,6 +49,11 @@ type Config struct {
 type Client struct {
 	esClient  *elastic.Client
 	sqlClient *sql.DB
+
+	// cache system
+	cacheEnabled bool
+	cacheTTL     time.Duration
+	cacheSystem  *cache.CacheSystem
 
 	ctx           context.Context
 	logger        *exlogger.Logger
@@ -69,10 +80,29 @@ func New(conf Config) (*Client, error) {
 		return nil, err
 	}
 
+	// Cache system
+	var cacheSystem *cache.CacheSystem = nil
+	if conf.CacheEnabled {
+		cacheSystemConfig := cache.CacheSystemConfig{
+			Enabled: conf.CacheEnabled,
+			TTL:     conf.CacheTTL,
+		}
+
+		cacheSystem, err = cache.New(cacheSystemConfig)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to create cache system")
+		}
+		conf.Logger.Log("CACHE SYSTEM enabled, TTL %s", conf.CacheTTL)
+	}
+
 	// init client
 	newClient := &Client{
 		esClient:  esClient,
 		sqlClient: sqlClient,
+
+		cacheEnabled: conf.CacheEnabled,
+		cacheTTL:     conf.CacheTTL,
+		cacheSystem:  cacheSystem,
 
 		ctx:           ctx,
 		logger:        conf.Logger,

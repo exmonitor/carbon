@@ -31,6 +31,8 @@ var Flags struct {
 	MariaDatabaseName string
 	MariaUser         string
 	MariaPassword     string
+	CacheEnabled      bool
+	CacheTTl          string
 
 	// other
 	TimeProfiling bool
@@ -64,6 +66,9 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaDatabaseName, "maria-database-name", "", "", "Set maria database name.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaUser, "maria-user", "", "", "Set Maria database user that wil be used for connection.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaPassword, "maria-password", "", "", "Set Maria database password that will be used for connection.")
+	// cache
+	rootCmd.PersistentFlags().BoolVarP(&flags.CacheEnabled, "cache", "", false, "Enable or disable caching of db records")
+	rootCmd.PersistentFlags().StringVarP(&flags.CacheTTl, "cache-ttl", "", "5m", "Set cache ttl. Must be in time.Duration format. Value lower than 1m doesnt make sense.")
 
 	// other
 	rootCmd.PersistentFlags().BoolVarP(&flags.Debug, "debug", "v", false, "Enable or disable more verbose log.")
@@ -77,7 +82,6 @@ func main() {
 		panic(err)
 	}
 }
-
 
 func validateFlags() {
 	if flags.TimeProfiling && !flags.Debug {
@@ -105,6 +109,13 @@ func mainExecute(cmd *cobra.Command, args []string) {
 	// database client connection
 	var dbClient database.ClientInterface
 	{
+		// parse cache ttl
+		cacheTTL, err := time.ParseDuration(flags.CacheTTl)
+		if err != nil {
+			fmt.Printf("Failed to parse cache TTL. %s is not valid format for time.Duration\n", flags.CacheTTl)
+			panic(err)
+		}
+
 		// set db configuration
 		dbConfig := exclient.DBConfig{
 			DBDriver:          flags.DBDriver,
@@ -113,6 +124,9 @@ func mainExecute(cmd *cobra.Command, args []string) {
 			MariaDatabaseName: flags.MariaDatabaseName,
 			MariaUser:         flags.MariaUser,
 			MariaPassword:     flags.MariaPassword,
+
+			CacheEnabled: flags.CacheEnabled,
+			CacheTTL:     cacheTTL,
 
 			Logger:        logger,
 			TimeProfiling: flags.TimeProfiling,
@@ -145,7 +159,7 @@ func mainExecute(cmd *cobra.Command, args []string) {
 		// init main service/process
 		mainService, err := service.New(mainServiceConfig)
 		if err != nil {
-
+			panic(err)
 		}
 		// boot main service/process
 		go mainService.Boot()
