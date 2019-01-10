@@ -15,7 +15,7 @@ import (
 
 const (
 	failed = true
-	ok = false
+	ok     = false
 )
 
 type Config struct {
@@ -168,9 +168,10 @@ func (s *Service) sendNotification(f FailedService, failed bool) {
 		ServiceID:                  f.Id,
 		NotificationChangeChannel:  s.notificationChan,
 		NotificationSentTimestamps: f.NotificationSentTimestamps,
-		SMTPEnabled: s.smtpEnabled,
-		SMTPEmailChan:s.smtpEmailChan,
+		SMTPEnabled:                s.smtpEnabled,
+		SMTPEmailChan:              s.smtpEmailChan,
 		Failed:                     failed,
+		FailedMsg:                  f.LastFailedMsg,
 		Logger:                     s.logger,
 	}
 	n, err := notification.New(notificationConfig)

@@ -19,9 +19,14 @@ import (
 const (
 	sqlDriver = "mysql"
 
-	esStatusIndex    = "service_status"
-	esStatusDocName  = "service_status"
-	esRangeQueryName = "my_range_query"
+	esStatusIndex   = "service_status"
+	esStatusDocName = "service_status"
+
+	esAggregatedStatusIndex   = "aggregated_service_status"
+	esAggregatedStatusDocName = "aggregated_service_status"
+
+
+	scrollWindowSize = 5000 // this is influenced by 'index.max_result_window' which is by default set to '10 000'
 )
 
 func DBDriverName() string {
@@ -111,10 +116,6 @@ func New(conf Config) (*Client, error) {
 	return newClient, nil
 }
 
-func mysqlConnectionString(mariaConnection string, mariaUser string, mariaPassword string, mariaDatabaseName string) string {
-	return fmt.Sprintf("%s:%s@%s/%s", mariaUser, mariaPassword, mariaConnection, mariaDatabaseName)
-}
-
 // close db connections
 func (c *Client) Close() {
 	c.sqlClient.Close()
@@ -161,16 +162,14 @@ func createElasticsearchClient(conf Config, ctx context.Context) (*elastic.Clien
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to ping elasticsearch")
 	}
-	// ensure status index is created
-	_, err = esClient.CreateIndex(esStatusIndex).Do(ctx)
-	if elastic.IsStatusCode(err, 400) {
-		// all good, index already exists
-		conf.Logger.LogDebug("Elasticsearch index '%s' already created, skipping", esStatusIndex)
-	} else if err != nil {
-		return nil, errors.Wrap(err, "failed to create default index for elasticsearch")
-	} else {
-		conf.Logger.LogDebug("Elasticsearch index '%s' created", esStatusIndex)
 
+	err = ensureCreatedIndex(ctx, esClient, esStatusIndex, conf.Logger)
+	if err != nil {
+		return nil, err
+	}
+	err = ensureCreatedIndex(ctx, esClient, esAggregatedStatusIndex, conf.Logger)
+	if err != nil {
+		return nil, err
 	}
 
 	t2.Finish()
@@ -180,4 +179,22 @@ func createElasticsearchClient(conf Config, ctx context.Context) (*elastic.Clien
 	}
 
 	return esClient, nil
+}
+
+func ensureCreatedIndex(ctx context.Context, esClient *elastic.Client, indexName string, logger *exlogger.Logger) error {
+	// ensure status index is created
+	_, err := esClient.CreateIndex(indexName).Do(ctx)
+	if elastic.IsStatusCode(err, 400) {
+		// all good, index already exists
+		logger.LogDebug("Elasticsearch index '%s' already created, skipping", indexName)
+	} else if err != nil {
+		return errors.Wrapf(err, "failed to create default index %s for elasticsearch", indexName)
+	} else {
+		logger.LogDebug("Elasticsearch index '%s' created", indexName)
+	}
+	return nil
+}
+
+func mysqlConnectionString(mariaConnection string, mariaUser string, mariaPassword string, mariaDatabaseName string) string {
+	return fmt.Sprintf("%s:%s@%s/%s", mariaUser, mariaPassword, mariaConnection, mariaDatabaseName)
 }

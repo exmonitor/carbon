@@ -43,7 +43,7 @@ func NewDaemon(conf DaemonConfig) (*Daemon, error) {
 		return nil, errors.Wrap(invalidConfigError, "conf.Logger must not be nil")
 	}
 	if conf.EmailChan == nil {
-		return nil, errors.Wrap(invalidConfigError, "conf.EmailChan must not be nil")
+		return nil, errors.Wrap(invalidConfigError, "conf.SMTPEmailChan must not be nil")
 	}
 
 	newDaemon := &Daemon{
@@ -99,11 +99,13 @@ func (d *Daemon) runDaemon(smtpDialer *gomail.Dialer) {
 			}
 
 			// assign 'From' email address
-			m.SetBody("From", buildFromHeader(d.smtpConfig.SMTPFrom, emailName))
+			m.SetHeader("From", buildFromHeader(d.smtpConfig.SMTPFrom, emailName))
 
 			// try send email
 			if err := gomail.Send(s, m); err != nil {
 				d.logger.LogError(err, "failed to send email")
+			} else {
+				d.logger.LogDebug("sent email to %s", m.GetHeader("To"))
 			}
 
 		// Close the connection to the SMTP server if no email was sent in

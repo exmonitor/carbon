@@ -78,9 +78,9 @@ func main() {
 	rootCmd.PersistentFlags().BoolVarP(&flags.SMTPEnabled, "smtp", "", true, "Enable or disable using the real SMTP server. If false, sending email is mocked.")
 	rootCmd.PersistentFlags().StringVarP(&flags.EmailFrom, "smtp-email-from", "", "alert@alertea.com", "Default email that will be used in 'From'.")
 	rootCmd.PersistentFlags().StringVarP(&flags.SMTPServer, "smtp-server", "", "127.0.0.1", "Hostname for SMTP server.")
-	rootCmd.PersistentFlags().IntVarP(&flags.SMTPPort, "smtp-port", "", 0, "Port for SMTP server.")
+	rootCmd.PersistentFlags().IntVarP(&flags.SMTPPort, "smtp-port", "", 465, "Port for SMTP server. Only TLS ports are allowed.")
 	rootCmd.PersistentFlags().StringVarP(&flags.SMTPUser, "smtp-user", "", "alert@alertea.com", "Username for SMTP server.")
-	rootCmd.PersistentFlags().StringVarP(&flags.SMTPPassword, "smtp-passwrd", "", "", "Password for SMTP server.")
+	rootCmd.PersistentFlags().StringVarP(&flags.SMTPPassword, "smtp-password", "", "", "Password for SMTP server.")
 
 	// cache
 	rootCmd.PersistentFlags().BoolVarP(&flags.CacheEnabled, "cache", "", false, "Enable or disable caching of db records")
@@ -201,7 +201,8 @@ func mainExecute(cmd *cobra.Command, args []string) {
 		mainServiceConfig := service.Config{
 			DBClient:      dbClient,
 			FetchInterval: time.Duration(interval) * time.Second,
-			SMTPEnabled:flags.SMTPEnabled,
+			SMTPEnabled:   flags.SMTPEnabled,
+			SMTPEmailChan: emailChan,
 
 			Logger:        logger,
 			TimeProfiling: flags.TimeProfiling,

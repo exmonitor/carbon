@@ -32,7 +32,7 @@ func GetDBClient(conf DBConfig) (database.ClientInterface, error) {
 	switch conf.DBDriver {
 	case dummydb.DBDriverName():
 		// dummydb has no errors on init
-		c := dummydb.GetClient(dummydb.Config{})
+		c := dummydb.GetClient(dummydb.Config{Logger:conf.Logger})
 		return c, nil
 	case multi.DBDriverName():
 		config := multi.Config{

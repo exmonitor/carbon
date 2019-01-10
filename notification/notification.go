@@ -5,6 +5,7 @@ import (
 
 	"github.com/exmonitor/exclient/database"
 	dbnotification "github.com/exmonitor/exclient/database/spec/notification"
+	"github.com/exmonitor/exclient/database/spec/service"
 	"github.com/exmonitor/exlogger"
 	"github.com/pkg/errors"
 
@@ -18,6 +19,7 @@ import (
 type Config struct {
 	ServiceID                  int
 	Failed                     bool
+	FailedMsg                  string
 	NotificationSentTimestamps map[int]time.Time
 	NotificationChangeChannel  chan state.NotificationChange
 	SMTPEnabled                bool
@@ -47,6 +49,7 @@ func New(conf Config) (*Service, error) {
 	newService := &Service{
 		checkId:                   conf.ServiceID,
 		failed:                    conf.Failed,
+		failedMsg:                 conf.FailedMsg,
 		notificationSentTimestamp: conf.NotificationSentTimestamps,
 		notificationChangeChannel: conf.NotificationChangeChannel,
 		smtpEnabled:               conf.SMTPEnabled,
@@ -62,6 +65,7 @@ func New(conf Config) (*Service, error) {
 type Service struct {
 	checkId                   int
 	failed                    bool
+	failedMsg                 string
 	notificationSentTimestamp map[int]time.Time
 	notificationChangeChannel chan state.NotificationChange
 	smtpEnabled               bool
@@ -91,40 +95,9 @@ func (s *Service) Run() {
 			// notification was already sent and its still to early to resent
 			continue
 		}
-		switch n.Type {
-		case contactTypeEmail:
-			// prepare email config
-			emailConfig := email.EmailConfig{
-				Failed:      s.failed,
-				To:          n.Target,
-				ServiceInfo: serviceInfo,
-				SMTPEnabled: s.smtpEnabled,
-				EmailChan:   s.smtpEmailChan,
-			}
+		// execute notification
+		s.executeNotification(serviceInfo, n)
 
-			emailSender, err := email.NewEmail(emailConfig)
-			if err != nil {
-				s.logger.LogError(err, "failed to prepare Email to %s for check id %d", n.Target, s.checkId)
-			}
-			// send email
-			emailSender.Send()
-			break
-		case contactTypeSms:
-			msg := SMSTemplate(s.failed, serviceInfo)
-			err := sms.Send(n.Target, msg)
-			if err != nil {
-				s.logger.LogError(err, "failed to send SMS to %s for check id %d", n.Target, s.checkId)
-			}
-			break
-		case contactTypePhone:
-			msg := CallTemplate(s.failed, serviceInfo)
-			err := phone.Call(n.Target, msg)
-			if err != nil {
-				s.logger.LogError(err, "failed to call to %s for check id %d", n.Target, s.checkId)
-			}
-		default:
-			s.logger.LogError(unknownContactTypeError, "contact type %s not recognized", n.Type)
-		}
 	}
 }
 
@@ -165,4 +138,42 @@ func (s *Service) canSentNotification(notificationSettings *dbnotification.UserN
 		return true
 	}
 
+}
+
+func (s *Service) executeNotification(serviceInfo *service.Service, n *dbnotification.UserNotificationSettings) {
+	switch n.Type {
+	case contactTypeEmail:
+		// prepare email config
+		emailConfig := email.EmailConfig{
+			To:            n.Target,
+			Failed:        s.failed,
+			FailedMsg:     s.failedMsg,
+			ServiceInfo:   serviceInfo,
+			SMTPEnabled:   s.smtpEnabled,
+			SMTPEmailChan: s.smtpEmailChan,
+		}
+
+		emailSender, err := email.NewEmail(emailConfig)
+		if err != nil {
+			s.logger.LogError(err, "failed to prepare Email to %s for check id %d", n.Target, s.checkId)
+		}
+		// send email
+		emailSender.Send()
+		break
+	case contactTypeSms:
+		msg := SMSTemplate(s.failed, serviceInfo)
+		err := sms.Send(n.Target, msg)
+		if err != nil {
+			s.logger.LogError(err, "failed to send SMS to %s for check id %d", n.Target, s.checkId)
+		}
+		break
+	case contactTypePhone:
+		msg := CallTemplate(s.failed, serviceInfo)
+		err := phone.Call(n.Target, msg)
+		if err != nil {
+			s.logger.LogError(err, "failed to call to %s for check id %d", n.Target, s.checkId)
+		}
+	default:
+		s.logger.LogError(unknownContactTypeError, "contact type %s not recognized", n.Type)
+	}
 }

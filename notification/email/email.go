@@ -9,12 +9,13 @@ import (
 )
 
 type EmailConfig struct {
-	To          string
 	Failed      bool
+	FailedMsg   string
+	To          string
 	ServiceInfo *service.Service
-
-	EmailChan   chan *gomail.Message
 	SMTPEnabled bool
+
+	SMTPEmailChan chan *gomail.Message
 }
 
 func NewEmail(conf EmailConfig) (*Email, error) {
@@ -24,25 +25,27 @@ func NewEmail(conf EmailConfig) (*Email, error) {
 	if conf.ServiceInfo == nil {
 		return nil, errors.Wrap(invalidConfigError, "conf.ServiceInfo cannot be nil")
 	}
-
-	if conf.SMTPEnabled && conf.EmailChan == nil {
-		return nil, errors.Wrap(invalidConfigError, "conf.EmailChan cannot be nil")
+	if conf.SMTPEnabled && conf.SMTPEmailChan == nil {
+		return nil, errors.Wrap(invalidConfigError, "conf.SMTPEmailChan cannot be nil")
 	}
 
 	newEmail := &Email{
-		to:          conf.To,
 		failed:      conf.Failed,
+		failedMsg:   conf.FailedMsg,
+		to:          conf.To,
 		serviceInfo: conf.ServiceInfo,
-		emailChan:   conf.EmailChan,
 		smtpEnabled: conf.SMTPEnabled,
+
+		emailChan: conf.SMTPEmailChan,
 	}
 
 	return newEmail, nil
 }
 
 type Email struct {
-	to          string
 	failed      bool
+	failedMsg   string
+	to          string
 	serviceInfo *service.Service
 
 	emailChan   chan *gomail.Message
