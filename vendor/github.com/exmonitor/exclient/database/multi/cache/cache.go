@@ -3,8 +3,8 @@ package cache
 import (
 	"time"
 
-	"github.com/pkg/errors"
 	"fmt"
+	"github.com/pkg/errors"
 )
 
 type CacheSystemConfig struct {

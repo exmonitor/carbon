@@ -145,7 +145,7 @@ func (c *Client) SQL_GetServices(intervalSec int) ([]*service.Service, error) {
 	t := chronos.New()
 
 	// cache system, ignore if ttl is lower than the interval as it will be always expired
-	if c.cacheEnabled && intervalSec > int(c.cacheTTL.Seconds()) {
+	if c.cacheEnabled {
 		if c.cacheSystem.SQL.GetServices.IsCacheValid(intervalSec, c.cacheTTL) {
 			// valid cache, lets use it
 			d := c.cacheSystem.SQL.GetServices.GetData(intervalSec)
@@ -210,7 +210,7 @@ func (c *Client) SQL_GetServices(intervalSec int) ([]*service.Service, error) {
 	}
 
 	// cache system, ignore if ttl is lower than the interval as it will be always expired
-	if c.cacheEnabled && intervalSec > int(c.cacheTTL.Seconds()) {
+	if c.cacheEnabled {
 		// save data to cache
 		c.cacheSystem.SQL.GetServices.CacheData(intervalSec, services)
 	}

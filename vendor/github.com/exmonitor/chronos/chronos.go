@@ -38,7 +38,7 @@ func (t *TimeInterval) StringMilisec() string {
 	if t.End.IsZero() {
 		return "not_finished"
 	}
-	return fmt.Sprintf("%.2f", float64(t.End.Sub(t.Start).Nanoseconds())/100000.0)
+	return fmt.Sprintf("%.4f", t.End.Sub(t.Start).Seconds()*1000.0)
 }
 
 func (t *TimeInterval) String() string {

@@ -8,9 +8,13 @@ import (
 	"github.com/exmonitor/exclient/database/spec/notification"
 	"github.com/exmonitor/exclient/database/spec/service"
 	"github.com/exmonitor/exclient/database/spec/status"
+	"github.com/olivere/elastic"
+	"github.com/exmonitor/exlogger"
 )
 
 type Config struct {
+	Logger *exlogger.Logger
+
 	// no config for dummydb needed
 }
 
@@ -24,6 +28,7 @@ type Client struct {
 }
 
 func GetClient(config Config) *Client {
+	config.Logger.Log("using DUMMYDB driver")
 	return &Client{}
 }
 
@@ -33,6 +38,10 @@ func (c *Client) Close() {
 
 var dummyDBStatusCounter = 0
 var dummyDBStatusIncreaser = 1
+
+const (
+	timeLayout = "2006-01-02 15:04:05"
+)
 
 // **************************************************
 // ELASTIC SEARCH
@@ -119,9 +128,148 @@ func (c *Client) ES_GetFailedServices(from time.Time, to time.Time, interval int
 	return statusArray, nil
 }
 
+func (c *Client) ES_GetServicesStatus(from time.Time, to time.Time, elasticQuery ...elastic.Query) ([]*status.ServiceStatus, error) {
+	var serviceStatusArray []*status.ServiceStatus
+
+	t1, _ := time.Parse(timeLayout, "2019-01-07 16:08:00")
+	s1 := &status.ServiceStatus{
+		Id:              1,
+		Interval:        30,
+		Result:          true,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t1,
+	}
+
+	t2, _ := time.Parse(timeLayout, "2019-01-07 16:09:00")
+	s2 := &status.ServiceStatus{
+		Id:              1,
+		Interval:        60,
+		Result:          true,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t2,
+	}
+
+	t3, _ := time.Parse(timeLayout, "2019-01-07 12:04:00")
+	s3 := &status.ServiceStatus{
+		Id:              2,
+		Interval:        30,
+		Result:          true,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t3,
+	}
+
+	t4, _ := time.Parse(timeLayout, "2019-01-07 12:04:30")
+	s4 := &status.ServiceStatus{
+		Id:              2,
+		Interval:        30,
+		Result:          false,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t4,
+	}
+
+	t5, _ := time.Parse(timeLayout, "2019-01-07 12:05:00")
+	s5 := &status.ServiceStatus{
+		Id:              2,
+		Interval:        30,
+		Result:          true,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t5,
+	}
+
+	t6, _ := time.Parse(timeLayout, "2019-01-07 13:04:30")
+	s6 := &status.ServiceStatus{
+		Id:              3,
+		Interval:        30,
+		Result:          true,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t6,
+	}
+
+	t7, _ := time.Parse(timeLayout, "2019-01-07 13:05:00")
+	s7 := &status.ServiceStatus{
+		Id:              3,
+		Interval:        30,
+		Result:          true,
+		Duration:        time.Second,
+		ReqId:           "xxx",
+		FailThreshold:   5,
+		Message:         "ok",
+		InsertTimestamp: t7,
+	}
+
+	serviceStatusArray = append(serviceStatusArray, s1, s2, s3, s4, s5, s6, s7)
+
+	return serviceStatusArray, nil
+}
+
 func (c *Client) ES_SaveServiceStatus(s *status.ServiceStatus) error {
 	// TODO
 	fmt.Printf("ES_SaveServiceStatus - NOT IMPLEMENTED\n")
+	return nil
+}
+
+func (c *Client) ES_DeleteServicesStatus(from time.Time, to time.Time) error {
+	fmt.Printf("ES_DeleteServicesStatus - NOT IMPLEMENTED\n")
+	return nil
+}
+
+func (c *Client) ES_GetAggregatedServiceStatusByID(from time.Time, to time.Time, serviceID int) (*status.AgregatedServiceStatus, error) {
+	var serviceStatus *status.AgregatedServiceStatus
+
+	if serviceID == 1 {
+		from, _ := time.Parse(timeLayout, "2019-01-07 16:02:10")
+		to, _ := time.Parse(timeLayout, "2019-01-07 16:05:35")
+		serviceStatus = &status.AgregatedServiceStatus{
+			Id:            "xaxWSCsxw",
+			ServiceID:     1,
+			Result:        true,
+			Interval:      30,
+			Aggregated:    10,
+			AvgDuration:   time.Second,
+			TimestampFrom: from,
+			TimestampTo:   to,
+		}
+	} else if serviceID == 2 {
+		from, _ := time.Parse(timeLayout, "2019-01-07 12:02:30")
+		to, _ := time.Parse(timeLayout, "2019-01-07 12:03:00")
+		serviceStatus = &status.AgregatedServiceStatus{
+			Id:            "xaxsxAFWw",
+			ServiceID:     2,
+			Result:        true,
+			Interval:      30,
+			Aggregated:    1,
+			AvgDuration:   time.Second,
+			TimestampFrom: from,
+			TimestampTo:   to,
+		}
+	} else if serviceID == 3 {
+		serviceStatus = nil
+	}
+
+	return serviceStatus, nil
+}
+
+func (c *Client) ES_SaveAggregatedServiceStatus(s *status.AgregatedServiceStatus) error {
+	// TODO
+	fmt.Printf("ES_SaveAggregatedServiceStatus - NOT IMPLEMENTED,\n")
 	return nil
 }
 

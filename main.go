@@ -12,7 +12,9 @@ import (
 	"github.com/exmonitor/exclient"
 	"github.com/exmonitor/exclient/database"
 	"github.com/exmonitor/exlogger"
+	"github.com/exmonitor/firefly/notification/email"
 	"github.com/exmonitor/firefly/service"
+	"gopkg.in/gomail.v2"
 )
 
 var Flags struct {
@@ -34,6 +36,14 @@ var Flags struct {
 	CacheEnabled      bool
 	CacheTTl          string
 
+	// smtp
+	SMTPEnabled  bool
+	EmailFrom    string
+	SMTPServer   string
+	SMTPPort     int
+	SMTPUser     string
+	SMTPPassword string
+
 	// other
 	TimeProfiling bool
 	Debug         bool
@@ -41,12 +51,9 @@ var Flags struct {
 
 var flags = Flags
 var rootCmd = &cobra.Command{
-	Use:   "carbon",
-	Short: "carbon is a backend notification service for exmonitor system",
-	Long: `Lotus is a backend notification service for exmonitor system.
-Carbon fetches data from database and then run periodically  monitoring checks. 
-Result of checks is stored back into database.
-Every monitoring check run in separate thread to avoid delays because of IO operations.`,
+	Use:   "firefly",
+	Short: "firefly is a backend notification service for exmonitor system",
+	Long:  `Firefly is a backend notification service for exmonitor system.`,
 }
 
 func main() {
@@ -66,6 +73,15 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaDatabaseName, "maria-database-name", "", "", "Set maria database name.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaUser, "maria-user", "", "", "Set Maria database user that wil be used for connection.")
 	rootCmd.PersistentFlags().StringVarP(&flags.MariaPassword, "maria-password", "", "", "Set Maria database password that will be used for connection.")
+
+	// smtp
+	rootCmd.PersistentFlags().BoolVarP(&flags.SMTPEnabled, "smtp", "", true, "Enable or disable using the real SMTP server. If false, sending email is mocked.")
+	rootCmd.PersistentFlags().StringVarP(&flags.EmailFrom, "smtp-email-from", "", "alert@alertea.com", "Default email that will be used in 'From'.")
+	rootCmd.PersistentFlags().StringVarP(&flags.SMTPServer, "smtp-server", "", "127.0.0.1", "Hostname for SMTP server.")
+	rootCmd.PersistentFlags().IntVarP(&flags.SMTPPort, "smtp-port", "", 465, "Port for SMTP server. Only TLS ports are allowed.")
+	rootCmd.PersistentFlags().StringVarP(&flags.SMTPUser, "smtp-user", "", "alert@alertea.com", "Username for SMTP server.")
+	rootCmd.PersistentFlags().StringVarP(&flags.SMTPPassword, "smtp-password", "", "", "Password for SMTP server.")
+
 	// cache
 	rootCmd.PersistentFlags().BoolVarP(&flags.CacheEnabled, "cache", "", false, "Enable or disable caching of db records")
 	rootCmd.PersistentFlags().StringVarP(&flags.CacheTTl, "cache-ttl", "", "5m", "Set cache ttl. Must be in time.Duration format. Value lower than 1m doesnt make sense.")
@@ -143,6 +159,39 @@ func mainExecute(cmd *cobra.Command, args []string) {
 	// also make sure to close log files before exiting
 	catchOSSignals(logger, dbClient)
 
+	var emailChan chan *gomail.Message
+	// email section
+	if flags.SMTPEnabled {
+		// email channel
+		emailChan = email.BuildEmailChannel()
+		// start email daemon
+		emailDaemonConfig := email.DaemonConfig{
+			SMTPConfig: email.SMTPConfig{
+				Server:   flags.SMTPServer,
+				Port:     flags.SMTPPort,
+				Username: flags.SMTPUser,
+				Password: flags.SMTPPassword,
+				SMTPFrom: flags.EmailFrom,
+			},
+			Logger:    logger,
+			EmailChan: emailChan,
+		}
+
+		emailDaemon, err := email.NewDaemon(emailDaemonConfig)
+		if err != nil {
+			fmt.Printf("Failed to start email daemon.\n")
+			panic(err)
+		}
+		// run daemon
+		emailDaemon.StartDaemon()
+	}
+	// make sure to close channel
+	defer func() {
+		if flags.SMTPEnabled {
+			close(emailChan)
+		}
+	}()
+
 	intervals, err := dbClient.SQL_GetIntervals()
 	if err != nil {
 		panic(err)
@@ -152,6 +201,8 @@ func mainExecute(cmd *cobra.Command, args []string) {
 		mainServiceConfig := service.Config{
 			DBClient:      dbClient,
 			FetchInterval: time.Duration(interval) * time.Second,
+			SMTPEnabled:   flags.SMTPEnabled,
+			SMTPEmailChan: emailChan,
 
 			Logger:        logger,
 			TimeProfiling: flags.TimeProfiling,

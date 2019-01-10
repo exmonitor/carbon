@@ -10,12 +10,19 @@ import (
 
 	"github.com/exmonitor/firefly/notification"
 	"github.com/exmonitor/firefly/service/state"
+	"gopkg.in/gomail.v2"
+)
+
+const (
+	failed = true
+	ok     = false
 )
 
 type Config struct {
 	DBClient      database.ClientInterface
 	FetchInterval time.Duration
-
+	SMTPEnabled   bool
+	SMTPEmailChan chan *gomail.Message
 	TimeProfiling bool
 	Logger        *exlogger.Logger
 }
@@ -23,7 +30,8 @@ type Config struct {
 type Service struct {
 	dbClient      database.ClientInterface
 	fetchInterval time.Duration
-
+	smtpEnabled   bool
+	smtpEmailChan chan *gomail.Message
 	timeProfiling bool
 
 	logger *exlogger.Logger
@@ -44,11 +52,17 @@ func New(conf Config) (*Service, error) {
 	if conf.FetchInterval == 0 {
 		return nil, errors.Wrapf(invalidConfigError, "conf.FetchInterval must not be zero")
 	}
+	if conf.SMTPEnabled && conf.SMTPEmailChan == nil {
+		return nil, errors.Wrapf(invalidConfigError, "conf.SMTPEmailChan must not be nil when conf.SMTPEnabled is true")
+	}
 
 	newService := &Service{
 		dbClient:      conf.DBClient,
 		logger:        conf.Logger,
 		fetchInterval: conf.FetchInterval,
+		smtpEnabled:   conf.SMTPEnabled,
+		smtpEmailChan: conf.SMTPEmailChan,
+		timeProfiling: conf.TimeProfiling,
 
 		failedServiceDB:  map[int]FailedService{},
 		lastFetchTime:    time.Now().Add(-conf.FetchInterval),
@@ -101,8 +115,8 @@ func (s *Service) mainLoop() error {
 			if failedService.FailCounter >= failedService.FailThreshold {
 				// never count fails over threshold
 				failedService.FailCounter = failedService.FailThreshold
-				// check if we reached threshold and possible send notification
-				s.sendFailNotification(failedService)
+				// maybe send Fail notification
+				s.sendNotification(failedService, failed)
 
 				// if counter is over threshold we dont save as we dont need to increase the counter anymore
 			} else {
@@ -133,7 +147,7 @@ func (s *Service) mainLoop() error {
 				// remove check from db
 				delete(s.failedServiceDB, id)
 				// send OK notification
-				s.sendOKNotification(failedService)
+				s.sendNotification(failedService, ok)
 			} else {
 				s.failedServiceDB[id] = failedService
 				s.logger.LogDebug("decreasing fail counter for failedService ID:%d to %d", id, failedService.FailCounter)
@@ -147,34 +161,18 @@ func (s *Service) mainLoop() error {
 }
 
 // send FAIL notification
-func (s *Service) sendFailNotification(f FailedService) {
+func (s *Service) sendNotification(f FailedService, failed bool) {
 	// init notification settings
 	notificationConfig := notification.Config{
 		DBClient:                   s.dbClient,
 		ServiceID:                  f.Id,
 		NotificationChangeChannel:  s.notificationChan,
 		NotificationSentTimestamps: f.NotificationSentTimestamps,
-		Failed:                     true,
+		SMTPEnabled:                s.smtpEnabled,
+		SMTPEmailChan:              s.smtpEmailChan,
+		Failed:                     failed,
+		FailedMsg:                  f.LastFailedMsg,
 		Logger:                     s.logger,
-	}
-	n, err := notification.New(notificationConfig)
-	if err != nil {
-		s.logger.LogError(err, "failed to create notification settings for service ID %d", f.Id)
-	}
-	// send notification in separate goroutine to avoid I/O block
-	go n.Run()
-}
-
-// send OK notification
-func (s *Service) sendOKNotification(f FailedService) {
-	// init notification settings
-	notificationConfig := notification.Config{
-		DBClient:  s.dbClient,
-		ServiceID: f.Id,
-		NotificationChangeChannel:  s.notificationChan,
-		NotificationSentTimestamps: f.NotificationSentTimestamps,
-		Failed:    false,
-		Logger:    s.logger,
 	}
 	n, err := notification.New(notificationConfig)
 	if err != nil {

@@ -1,9 +1,81 @@
 package email
 
-import "fmt"
+import (
+	"fmt"
 
-func Send(email string, message string) error {
+	"github.com/exmonitor/exclient/database/spec/service"
+	"github.com/pkg/errors"
+	"gopkg.in/gomail.v2"
+)
 
-	fmt.Printf("<< Fake email notification sent to %s\n", email)
-	return nil
+type EmailConfig struct {
+	Failed      bool
+	FailedMsg   string
+	To          string
+	ServiceInfo *service.Service
+	SMTPEnabled bool
+
+	SMTPEmailChan chan *gomail.Message
+}
+
+func NewEmail(conf EmailConfig) (*Email, error) {
+	if conf.To == "" {
+		return nil, errors.Wrap(invalidConfigError, "conf.To cannot be empty")
+	}
+	if conf.ServiceInfo == nil {
+		return nil, errors.Wrap(invalidConfigError, "conf.ServiceInfo cannot be nil")
+	}
+	if conf.SMTPEnabled && conf.SMTPEmailChan == nil {
+		return nil, errors.Wrap(invalidConfigError, "conf.SMTPEmailChan cannot be nil")
+	}
+
+	newEmail := &Email{
+		failed:      conf.Failed,
+		failedMsg:   conf.FailedMsg,
+		to:          conf.To,
+		serviceInfo: conf.ServiceInfo,
+		smtpEnabled: conf.SMTPEnabled,
+
+		emailChan: conf.SMTPEmailChan,
+	}
+
+	return newEmail, nil
+}
+
+type Email struct {
+	failed      bool
+	failedMsg   string
+	to          string
+	serviceInfo *service.Service
+
+	emailChan   chan *gomail.Message
+	smtpEnabled bool
+}
+
+func (e *Email) Send() {
+	if !e.smtpEnabled {
+		fmt.Printf("<< fake email sent to %s\n", e.to)
+		return
+	}
+
+	// build email struct
+	msg := e.buildEmail()
+
+	// send email to email daemon via channel
+	e.emailChan <- msg
+}
+
+func (e *Email) buildEmail() *gomail.Message {
+	m := gomail.NewMessage()
+
+	m.SetHeader("To", e.to)
+	m.SetHeader("Subject", e.emailSubject())
+	m.SetBody("text/html", e.emailBody())
+
+	return m
+}
+
+// to remove the complexity of the channel from other packages
+func BuildEmailChannel() chan *gomail.Message {
+	return make(chan *gomail.Message)
 }

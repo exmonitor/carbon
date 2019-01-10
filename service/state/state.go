@@ -4,4 +4,3 @@ type NotificationChange struct {
 	ServiceID      int
 	NotificationID int
 }
-
