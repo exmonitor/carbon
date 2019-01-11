@@ -146,8 +146,10 @@ func (s *Service) mainLoop() error {
 			if failedService.FailCounter <= 0 {
 				// remove check from db
 				delete(s.failedServiceDB, id)
-				// send OK notification
-				s.sendNotification(failedService, ok)
+				// send OK notification, only if we already sent any FAIL notification
+				if len(failedService.NotificationSentTimestamps) > 0 {
+					s.sendNotification(failedService, ok)
+				}
 			} else {
 				s.failedServiceDB[id] = failedService
 				s.logger.LogDebug("decreasing fail counter for failedService ID:%d to %d", id, failedService.FailCounter)
@@ -203,6 +205,7 @@ func intervalTick(intervalSec int, tickChan chan bool) {
 
 // this function waits for signals from notifications to update time, when notification was sent
 // it is necessary for keeping proper resent mechanism
+// we only sent messages to this channel for FAIL notification
 func (s *Service) notificationSentTimestampOperator() {
 	for {
 		notifChange := <-s.notificationChan
