@@ -118,7 +118,10 @@ func (s *Service) canSentNotification(notificationSettings *dbnotification.UserN
 				ServiceID:      s.checkId,
 				NotificationID: notificationSettings.ID,
 			}
-			s.notificationChangeChannel <- nc
+			// we dont need to save notification sent timestamp for OK notifications, as the records will be removed from DB anyway
+			if s.failed {
+				s.notificationChangeChannel <- nc
+			}
 			// sent notification
 			s.logger.Log("resending notification for serviceID %d, notificationID %d after %.0fm", s.checkId, notificationSettings.ID, resentAfter.Minutes())
 			return true
@@ -132,7 +135,10 @@ func (s *Service) canSentNotification(notificationSettings *dbnotification.UserN
 			ServiceID:      s.checkId,
 			NotificationID: notificationSettings.ID,
 		}
-		s.notificationChangeChannel <- nc
+		// we dont need to save notification sent timestamp for OK notifications, as the records will be removed from DB anyway
+		if s.failed {
+			s.notificationChangeChannel <- nc
+		}
 		// sent notification
 		s.logger.Log("send first notification for serviceID %d, notificationID %d", s.checkId, notificationSettings.ID)
 		return true

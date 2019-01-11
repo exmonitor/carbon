@@ -1,11 +1,10 @@
 package email
 
 import (
-	"fmt"
-
 	"github.com/exmonitor/exclient/database/spec/service"
 	"github.com/pkg/errors"
 	"gopkg.in/gomail.v2"
+	"fmt"
 )
 
 type EmailConfig struct {
@@ -53,16 +52,17 @@ type Email struct {
 }
 
 func (e *Email) Send() {
-	if !e.smtpEnabled {
-		fmt.Printf("<< fake email sent to %s\n", e.to)
-		return
-	}
-
 	// build email struct
 	msg := e.buildEmail()
 
-	// send email to email daemon via channel
-	e.emailChan <- msg
+	if e.smtpEnabled {
+		// send email to email daemon via channel
+		e.emailChan <- msg
+	} else {
+		fmt.Printf("<< fake email sent to %s\n %s\n", e.to, e.emailBody())
+		return
+	}
+
 }
 
 func (e *Email) buildEmail() *gomail.Message {
