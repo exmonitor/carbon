@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/cenkalti/backoff"
+  packages = ["."]
+  revision = "1e4cf3da559842a91afcb6ea6141451e6c30c618"
+  version = "v2.1.1"
+
+[[projects]]
   branch = "master"
   name = "github.com/exmonitor/chronos"
   packages = ["."]
@@ -20,7 +26,7 @@
     "database/spec/service",
     "database/spec/status"
   ]
-  revision = "346d1d005a4af0368cce0b12376165d82e09dad9"
+  revision = "9bd19041a45ea53561e4fe4074abd26b06c2e43e"
 
 [[projects]]
   branch = "master"

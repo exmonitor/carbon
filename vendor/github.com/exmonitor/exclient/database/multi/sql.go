@@ -4,6 +4,8 @@ import (
 	"github.com/exmonitor/chronos"
 	"github.com/pkg/errors"
 
+	"database/sql"
+	"github.com/cenkalti/backoff"
 	"github.com/exmonitor/exclient/database/spec/notification"
 	"github.com/exmonitor/exclient/database/spec/service"
 )
@@ -22,20 +24,25 @@ import (
 
 */
 func (c *Client) SQL_GetIntervals() ([]int, error) {
+	var err error
+	var intervals []int
 	t := chronos.New()
-
 	q := "SELECT " +
 		"id_interval, " +
 		"value " +
 		"FROM " +
 		"intervalSec"
+
+	var rows *sql.Rows
 	// create sql query
-	rows, err := c.sqlClient.Query(q)
+	o := func() error {
+		rows, err = c.sqlClient.Query(q)
+		return err
+	}
+	err = backoff.Retry(o, NewSQLBackoff(c.logger))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute SQL_GetIntervals")
 	}
-
-	var intervals []int
 	// read result
 	for rows.Next() {
 		var id, value int
@@ -69,6 +76,8 @@ func (c *Client) SQL_GetIntervals() ([]int, error) {
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8 |
 */
 func (c *Client) SQL_GetUsersNotificationSettings(serviceID int) ([]*notification.UserNotificationSettings, error) {
+	var err error
+	var notifications []*notification.UserNotificationSettings
 	t := chronos.New()
 
 	// cache system
@@ -98,17 +107,22 @@ func (c *Client) SQL_GetUsersNotificationSettings(serviceID int) ([]*notificatio
 		"JOIN notification ON id_users=fk_users " +
 		"JOIN notify_settings ON fk_settings=id_settings " +
 		"WHERE services.id_services = ?;"
-	// prepare sql query
-	query, err := c.sqlClient.Prepare(q)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to prepare query SQL_GetUsersNotificationSettings")
+
+	var rows *sql.Rows
+	// prepare backoff
+	o := func() error {
+		query, err := c.sqlClient.Prepare(q)
+		if err != nil {
+			return err
+		}
+		rows, err = query.Query(serviceID)
+		return err
 	}
-	// execute sql query
-	rows, err := query.Query(serviceID)
+	// execute query via backoff
+	err = backoff.Retry(o, NewSQLBackoff(c.logger))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute SQL_GetUsersNotificationSettings")
 	}
-	var notifications []*notification.UserNotificationSettings
 
 	// read result
 	for rows.Next() {
@@ -142,6 +156,8 @@ func (c *Client) SQL_GetUsersNotificationSettings(serviceID int) ([]*notificatio
 }
 
 func (c *Client) SQL_GetServices(intervalSec int) ([]*service.Service, error) {
+	var err error
+	var services []*service.Service
 	t := chronos.New()
 
 	// cache system, ignore if ttl is lower than the interval as it will be always expired
@@ -175,17 +191,22 @@ func (c *Client) SQL_GetServices(intervalSec int) ([]*service.Service, error) {
 		"JOIN hosts ON fk_service_hosts=id_hosts " +
 		"JOIN location ON fk_location=id_location " +
 		"WHERE intervalSec.value=?;"
-	// prepare sql query
-	query, err := c.sqlClient.Prepare(q)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to prepare query SQL_GetServices")
+
+	var rows *sql.Rows
+	// prepare backoff
+	o := func() error {
+		query, err := c.sqlClient.Prepare(q)
+		if err != nil {
+			return err
+		}
+		rows, err = query.Query(intervalSec)
+		return err
 	}
-	// execute sql query
-	rows, err := query.Query(intervalSec)
+	// execute query via backoff
+	err = backoff.Retry(o, NewSQLBackoff(c.logger))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute SQL_GetServices")
 	}
-	var services []*service.Service
 
 	// read result
 	for rows.Next() {
@@ -223,6 +244,8 @@ func (c *Client) SQL_GetServices(intervalSec int) ([]*service.Service, error) {
 }
 
 func (c *Client) SQL_GetServiceDetails(serviceID int) (*service.Service, error) {
+	var err error
+	var s *service.Service
 	t := chronos.New()
 
 	// cache system
@@ -256,18 +279,23 @@ func (c *Client) SQL_GetServiceDetails(serviceID int) (*service.Service, error) 
 		"JOIN hosts ON fk_service_hosts=id_hosts " +
 		"JOIN location ON fk_location=id_location " +
 		"WHERE services.id_services=?;"
-	// prepare sql query
-	query, err := c.sqlClient.Prepare(q)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to prepare query SQL_GetServiceDetails")
+
+	var rows *sql.Rows
+	// prepare backoff
+	o := func() error {
+		query, err := c.sqlClient.Prepare(q)
+		if err != nil {
+			return err
+		}
+		rows, err = query.Query(serviceID)
+		return err
 	}
-	// execute sql query
-	rows, err := query.Query(serviceID)
+	// execute query via backoff
+	err = backoff.Retry(o, NewSQLBackoff(c.logger))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to execute SQL_GetServiceDetails")
 	}
 
-	var s *service.Service
 	if rows.Next() {
 		// read result
 		var failThreshold, intervalSec, serviceType int

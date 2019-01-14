@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/cenkalti/backoff"
+  packages = ["."]
+  revision = "1e4cf3da559842a91afcb6ea6141451e6c30c618"
+  version = "v2.1.1"
+
+[[projects]]
   branch = "master"
   name = "github.com/exmonitor/chronos"
   packages = ["."]
@@ -55,6 +61,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "1f7343b752cb5db19a76ac4b7dab0d62c462294f6d175a6986cbcead50a94d94"
+  inputs-digest = "71763c0f6a3359dde789950dda6510015b66ecc1b4d8f7bb71cf299e485fe011"
   solver-name = "gps-cdcl"
   solver-version = 1
