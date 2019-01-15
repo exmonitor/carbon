@@ -26,7 +26,7 @@
     "database/spec/service",
     "database/spec/status"
   ]
-  revision = "9bd19041a45ea53561e4fe4074abd26b06c2e43e"
+  revision = "6347da2245ce68e05164c7fd792cd3ee2094b819"
 
 [[projects]]
   branch = "master"

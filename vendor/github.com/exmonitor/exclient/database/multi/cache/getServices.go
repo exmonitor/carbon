@@ -4,10 +4,12 @@ import (
 	"time"
 
 	"github.com/exmonitor/exclient/database/spec/service"
+	"sync"
 )
 
 type SQL_GetServices struct {
 	Cache map[int]SQL_GetServices_Record
+	sync.Mutex
 }
 
 type SQL_GetServices_Record struct {
@@ -42,9 +44,13 @@ func (s *SQL_GetServices) GetData(interval int) []*service.Service {
 
 // save data to cache
 func (s *SQL_GetServices) CacheData(intervalSec int, d []*service.Service) {
+	s.Lock()
+
 	r := SQL_GetServices_Record{
 		Age:  time.Now(),
 		Data: d,
 	}
 	s.Cache[intervalSec] = r
+
+	s.Unlock()
 }

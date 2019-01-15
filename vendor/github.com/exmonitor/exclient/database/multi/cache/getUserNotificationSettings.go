@@ -4,10 +4,12 @@ import (
 	"time"
 
 	"github.com/exmonitor/exclient/database/spec/notification"
+	"sync"
 )
 
 type SQL_GetUsersNotificationSetting struct {
 	Cache map[int]SQL_GetUsersNotificationSetting_Record
+	sync.Mutex
 }
 
 type SQL_GetUsersNotificationSetting_Record struct {
@@ -42,9 +44,13 @@ func (s *SQL_GetUsersNotificationSetting) GetData(serviceID int) []*notification
 
 // save data to cache
 func (s *SQL_GetUsersNotificationSetting) CacheData(serviceID int, d []*notification.UserNotificationSettings) {
+	s.Lock()
+
 	r := SQL_GetUsersNotificationSetting_Record{
 		Age:  time.Now(),
 		Data: d,
 	}
 	s.Cache[serviceID] = r
+
+	s.Unlock()
 }
