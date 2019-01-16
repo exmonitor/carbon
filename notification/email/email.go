@@ -1,10 +1,10 @@
 package email
 
 import (
+	"fmt"
 	"github.com/exmonitor/exclient/database/spec/service"
 	"github.com/pkg/errors"
 	"gopkg.in/gomail.v2"
-	"fmt"
 )
 
 type EmailConfig struct {
