@@ -1,11 +1,11 @@
 package email
 
 import (
+	"crypto/tls"
 	"github.com/exmonitor/exlogger"
 	"github.com/pkg/errors"
 	"gopkg.in/gomail.v2"
 	"time"
-	"crypto/tls"
 )
 
 type SMTPConfig struct {
@@ -63,20 +63,20 @@ type Daemon struct {
 
 func (d *Daemon) StartDaemon() {
 	/*
-	// CRAM md5 AUTH
-	auth := smtp.CRAMMD5Auth(d.smtpConfig.Username, d.smtpConfig.Password)
-	// skip tls as for now we use self signed TLS fro postfix
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: true,
-	}
-	// prepare smtp Dialer
-	smtpDialer := &gomail.Dialer{
-		Host:      d.smtpConfig.Server,
-		Port:      d.smtpConfig.Port,
-		SSL:       true,
-		TLSConfig: tlsConfig,
-		Auth:      auth,
-	}*/
+		// CRAM md5 AUTH
+		auth := smtp.CRAMMD5Auth(d.smtpConfig.Username, d.smtpConfig.Password)
+		// skip tls as for now we use self signed TLS fro postfix
+		tlsConfig := &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		// prepare smtp Dialer
+		smtpDialer := &gomail.Dialer{
+			Host:      d.smtpConfig.Server,
+			Port:      d.smtpConfig.Port,
+			SSL:       true,
+			TLSConfig: tlsConfig,
+			Auth:      auth,
+		}*/
 	smtpDialer := gomail.NewPlainDialer(d.smtpConfig.Server, d.smtpConfig.Port, d.smtpConfig.Username, d.smtpConfig.Password)
 	smtpDialer.TLSConfig = &tls.Config{
 		InsecureSkipVerify: true,

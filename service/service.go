@@ -11,6 +11,7 @@ import (
 	"github.com/exmonitor/firefly/notification"
 	"github.com/exmonitor/firefly/service/state"
 	"gopkg.in/gomail.v2"
+	"sync"
 )
 
 const (
@@ -39,6 +40,8 @@ type Service struct {
 	failedServiceDB  map[int]FailedService // int is holder for check ID
 	lastFetchTime    time.Time
 	notificationChan chan state.NotificationChange
+
+	sync.Mutex
 }
 
 // Create new Service
@@ -121,17 +124,18 @@ func (s *Service) mainLoop() error {
 				// if counter is over threshold we dont save as we dont need to increase the counter anymore
 			} else {
 				// safe back to localDB
-				s.failedServiceDB[c.Id] = failedService
+				s.SaveNewFailedService(c.Id, &failedService)
 				s.logger.LogDebug("increasing failCounter for failedService ID:%d to %d/%d", failedService.Id, failedService.FailCounter, failedService.FailThreshold)
 			}
 		} else {
-			s.failedServiceDB[c.Id] = FailedService{
+			newFailedService := &FailedService{
 				Id:                         c.Id,
 				FailCounter:                1,
 				FailThreshold:              c.FailThreshold,
 				LastFailedMsg:              c.Message,
 				NotificationSentTimestamps: map[int]time.Time{},
 			}
+			s.SaveNewFailedService(c.Id, newFailedService)
 			s.logger.LogDebug("adding new failedService with ID:%d to localDB", c.Id)
 		}
 	}
@@ -151,7 +155,7 @@ func (s *Service) mainLoop() error {
 					s.sendNotification(failedService, ok)
 				}
 			} else {
-				s.failedServiceDB[id] = failedService
+				s.SaveNewFailedService(id, &failedService)
 				s.logger.LogDebug("decreasing fail counter for failedService ID:%d to %d", id, failedService.FailCounter)
 			}
 		}
@@ -211,12 +215,19 @@ func (s *Service) notificationSentTimestampOperator() {
 		notifChange := <-s.notificationChan
 		if failedService, ok := s.failedServiceDB[notifChange.ServiceID]; ok {
 			// save current timestamp into the map
-			failedService.NotificationSentTimestamps[notifChange.NotificationID] = time.Now()
+			failedService.SaveNewTimeStamp(notifChange.NotificationID, time.Now())
 			// save back to failedServiceDB
-			s.failedServiceDB[notifChange.ServiceID] = failedService
+			s.SaveNewFailedService(notifChange.ServiceID, &failedService)
 			s.logger.LogDebug("saved new notificationSentTimestamp for serviceID %d, notificationID %d", notifChange.ServiceID, notifChange.NotificationID)
 		} else {
 			s.logger.LogError(nil, "trying to access non-existing serviceID in failedServiceDB in notificationSentTimestampOperator")
 		}
 	}
+}
+
+// atomic save into map
+func (s *Service) SaveNewFailedService(id int, failedService *FailedService) {
+	s.Lock()
+	s.failedServiceDB[id] = *failedService
+	s.Unlock()
 }
