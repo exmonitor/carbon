@@ -1,0 +1,26 @@
+[Unit]
+Description=firefly
+
+[Service]
+EnvironmentFile=/opt/alertea/config
+ExecStart=/bin/bash -c '\
+        /opt/alertea/firefly/firefly \
+        --log-to-file=${FIREFLY_LOG_TO_FILE} \
+        --log-file=${FIREFLY_LOG_FILE} \
+        --log-error-file=${FIREFLY_LOG_ERROR_FILE} \
+        --db-driver="${DB_DRIVER}" \
+        --maria-user="${MARIA_USER}" \
+        --maria-password="${MARIA_PASSWORD}" \
+        --maria-database-name="${MARIA_DB}" \
+        --debug \
+        --time-profiling \
+        --cache \
+        --cache-ttl=5m \
+        --smtp \
+        --smtp-server=${SMTP_SERVER} \
+        --smtp-user=${SMTP_USER} \
+        --smtp-password=${SMTP_PASSWORD} '
+ExecStop=/bin/bash -c 'pkill firefly'
+
+[Install]
+WantedBy=multi-user.target

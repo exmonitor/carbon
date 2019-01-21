@@ -32,7 +32,7 @@
   branch = "master"
   name = "github.com/exmonitor/exlogger"
   packages = ["."]
-  revision = "82c50944ae03c05c4e6cc70056a4fe005624caef"
+  revision = "6a54474014ad459a4a66662c056e6be5e9ae1545"
 
 [[projects]]
   name = "github.com/go-sql-driver/mysql"
