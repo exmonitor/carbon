@@ -106,6 +106,7 @@ func (d *Daemon) runDaemon(smtpDialer *gomail.Dialer) {
 			// if connection to SMTP server is closed, open it
 			if !open {
 				if s, err = smtpDialer.Dial(); err != nil {
+					d.logger.LogError(err, "failed to  connect to SMTP server")
 					panic(err)
 				}
 				open = true
@@ -113,10 +114,11 @@ func (d *Daemon) runDaemon(smtpDialer *gomail.Dialer) {
 
 			// assign 'From' email address
 			m.SetHeader("From", buildFromHeader(d.smtpConfig.SMTPFrom, emailName))
+			m.SetHeader("Return-Path", d.smtpConfig.SMTPFrom)
 
 			// try send email
 			if err := gomail.Send(s, m); err != nil {
-				d.logger.LogError(err, "failed to send email")
+				d.logger.LogError(err, "failed to send email to %s", m.GetHeader("To"))
 			} else {
 				d.logger.LogDebug("sent email to %s", m.GetHeader("To"))
 			}
