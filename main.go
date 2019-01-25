@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -221,6 +222,8 @@ func mainExecute(cmd *cobra.Command, args []string) {
 	select {}
 }
 
+var sigTermErr = errors.New("SIGTERM")
+
 // catch Interrupt (Ctrl^C) or SIGTERM and exit
 func catchOSSignals(l *exlogger.Logger, dbClient database.ClientInterface) {
 	// catch signals
@@ -230,8 +233,8 @@ func catchOSSignals(l *exlogger.Logger, dbClient database.ClientInterface) {
 		s := <-c
 		// be sure to close log files
 		if flags.LogToFile {
-			l.Log(">> Caught signal %s, exiting ...",s.String())
-			l.LogError(nil,">> Caught signal %s, exiting ...",s.String())
+			l.Log(">> Caught signal %s, exiting ...", s.String())
+			l.LogError(sigTermErr, ">> Caught signal %s, exiting ...", s.String())
 			l.CloseLogs()
 		}
 		// close db client
