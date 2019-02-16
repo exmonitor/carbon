@@ -133,7 +133,7 @@ func (e *Email) emailSubject() string {
 	return subject
 }
 
-func buildFromHeader(emailFrom string, name string) string {
+func fromHeader(emailFrom string, name string) string {
 	return fmt.Sprintf("%s <%s>", name, emailFrom)
 }
 

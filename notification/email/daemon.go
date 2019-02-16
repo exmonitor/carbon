@@ -2,6 +2,7 @@ package email
 
 import (
 	"crypto/tls"
+	"github.com/cenkalti/backoff"
 	"github.com/exmonitor/exlogger"
 	"github.com/pkg/errors"
 	"gopkg.in/gomail.v2"
@@ -105,19 +106,33 @@ func (d *Daemon) runDaemon(smtpDialer *gomail.Dialer) {
 			}
 			// if connection to SMTP server is closed, open it
 			if !open {
-				if s, err = smtpDialer.Dial(); err != nil {
-					d.logger.LogError(err, "failed to  connect to SMTP server")
-					panic(err)
+				// prepare backoff
+				o := func() error {
+					  s, err = smtpDialer.Dial()
+					  return err
 				}
+				// execute login via backoff
+				err = backoff.Retry(o, NewEmailBackoff(d.logger))
+				if err != nil {
+					panic(errors.Wrapf(err, "failed to connect to SMTP server"))
+				}
+
 				open = true
 			}
 
 			// assign 'From' email address
-			m.SetHeader("From", buildFromHeader(d.smtpConfig.SMTPFrom, emailName))
+			m.SetHeader("From", fromHeader(d.smtpConfig.SMTPFrom, emailName))
 			m.SetHeader("Return-Path", d.smtpConfig.SMTPFrom)
 
-			// try send email
-			if err := gomail.Send(s, m); err != nil {
+			// try send email with backoff
+			o := func() error {
+				err = gomail.Send(s, m)
+				return err
+			}
+
+			// execute send email via backoff
+			err = backoff.Retry(o, NewEmailBackoff(d.logger))
+			if err != nil {
 				d.logger.LogError(err, "failed to send email to %s", m.GetHeader("To"))
 			} else {
 				d.logger.LogDebug("sent email to %s", m.GetHeader("To"))
