@@ -143,7 +143,13 @@ func (d *Daemon) runDaemon(smtpDialer *gomail.Dialer) {
 		case <-time.After(30 * time.Second):
 			if open {
 				// close connection
-				err := s.Close()
+				o := func() error {
+					err = s.Close()
+					return err
+				}
+
+				// execute send email via backoff
+				err = backoff.Retry(o, NewEmailBackoff(d.logger))
 				if err != nil {
 					panic(err)
 				}

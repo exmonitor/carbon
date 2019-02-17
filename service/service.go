@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/exmonitor/exclient/database"
@@ -40,6 +41,7 @@ type Service struct {
 	failedServiceDB  map[int]FailedService // int is holder for check ID
 	lastFetchTime    time.Time
 	notificationChan chan state.NotificationChange
+	jitterSec int
 
 	sync.Mutex
 }
@@ -70,6 +72,7 @@ func New(conf Config) (*Service, error) {
 		failedServiceDB:  map[int]FailedService{},
 		lastFetchTime:    time.Now().Add(-conf.FetchInterval),
 		notificationChan: make(chan state.NotificationChange),
+		jitterSec: rand.Intn(10),
 	}
 
 	return newService, nil
@@ -81,7 +84,7 @@ func (s *Service) Boot() {
 	// run tick goroutine
 	tickChan := make(chan bool)
 	s.logger.LogDebug("booting loop for interval %ds", int(s.fetchInterval.Seconds()))
-	go intervalTick(int(s.fetchInterval.Seconds()), tickChan)
+	go intervalTick(int(s.fetchInterval.Seconds()), s.jitterSec,  tickChan)
 	go s.notificationSentTimestampOperator()
 
 	// run infinite loop
@@ -189,12 +192,12 @@ func (s *Service) sendNotification(f FailedService, failed bool) {
 }
 
 // send true to tickChan every intervalSec
-func intervalTick(intervalSec int, tickChan chan bool) {
+func intervalTick(intervalSec int, jitterSec int, tickChan chan bool) {
 	for {
 		// extract amount of second and minutes from the now time
 		_, min, sec := time.Now().Clock()
 		// get sum of total secs in hour as intervals can be bigger than 59 sec
-		totalSeconds := min*60 + sec
+		totalSeconds := min*60 + sec - jitterSec
 
 		// check if we hit the interval
 		if totalSeconds%intervalSec == 0 {
